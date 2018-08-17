@@ -1,8 +1,11 @@
-Hypothetical Outcome Plots (HOPs) for proportions
+Hypothetical outcome plots (HOPs) and quantile dotplots for proportions
 ================
 
-Here is a quick example of hypothetical outcome plots (HOPs) for
-proportions
+Here is a quick example of two frequency-framing approaches to
+visualizing the uncertainty in a proportion: hypothetical outcome plots
+(HOPs), which are useful when you are using a medium that supports
+animation, and quantile dotplots, which are useful when you are using a
+medium that does not support animation.
 
 ## Setup
 
@@ -53,7 +56,7 @@ an example, your mileage may vary\!):
 m = stan_glm(count ~ group, family = poisson, data = df)
 ```
 
-## HOPs
+## Hypothetical outcome plots (HOPs)
 
 Given that model, we could construct a HOPs (Hullman, Resnick, and Adar
 [2015](#ref-Hullman2015); Kale et al. [2019](#ref-Kale2018)) bar chart
@@ -82,9 +85,9 @@ p = df %>%
 animate(p, nframes = n_hops * 2, width = 600, height = 300)
 ```
 
-![](hops_proportions_files/figure-gfm/hops-1.gif)<!-- -->
+![](proportions_files/figure-gfm/hops-1.gif)<!-- -->
 
-## Quantile dotplots (static alternative)
+## Quantile dotplots
 
 If animation were not available (e.g. in a print medium), an alternative
 might be a quantile dotplot (Kay et al. [2016](#ref-Kay2016); Fernandes
@@ -125,7 +128,7 @@ df %>%
   scale_y_continuous(breaks = NULL)
 ```
 
-![](hops_proportions_files/figure-gfm/quantile-dotplots-1.png)<!-- -->
+![](proportions_files/figure-gfm/quantile-dotplots-1.png)<!-- -->
 
 ## References
 
