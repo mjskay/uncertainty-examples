@@ -22,7 +22,7 @@ options(mc.cores = parallel::detectCores())
 
 ## Data
 
-We’re going to use this data:
+We’re going to use [this data](https://twitter.com/meakoopa/status/1031007386725703680):
 
 ![Barbarella outfit survey](barbarella.jpg)
 
