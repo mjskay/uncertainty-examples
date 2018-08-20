@@ -78,7 +78,8 @@ Which looks like this:
 ``` r
 barb %>%
   ggplot(aes(x = rating, y = outfit)) +
-  geom_count(color = "gray75")
+  geom_count(color = "gray75") +
+  scale_size(range = c(2,8))
 ```
 
 ![](barbarella_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
@@ -142,7 +143,14 @@ barb %>%
   geom_bar(aes(y = stat(prop)), data = barb, color = "red", fill = "red", alpha = 0.25) +
   facet_grid(rows = vars(fct_rev(outfit)), switch = "y") +
   facet_title_left_horizontal() +
-  scale_y_continuous(breaks = NULL)
+  ylab(NULL) +
+  scale_y_continuous(breaks = NULL) +
+  axis_titles_bottom_left() +
+  coord_cartesian(xlim = c(1, 14)) +
+  geom_text(x = 9, y = 0.1, data = data.frame(outfit = "white thigh-high"),
+    label = "observed data", vjust = 0, color = "red", hjust = 0) +
+  geom_text(x = 9, y = 0.1, data = data.frame(outfit = "red-belt medieval"),
+    label = "posterior predictions", vjust = 0, color = "gray50", hjust = 0)
 ```
 
 ![](barbarella_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
@@ -163,9 +171,16 @@ p = barb %>%
   facet_grid(rows = vars(fct_rev(outfit)), switch = "y") +
   facet_title_left_horizontal() +
   scale_y_continuous(breaks = NULL) +
+  ylab(NULL) +
+  axis_titles_bottom_left() +
+  coord_cartesian(xlim = c(1, 14)) +
+  geom_text(x = 9, y = 0.1, data = data.frame(outfit = "white thigh-high"),
+    label = "observed data", vjust = 0, color = "red", hjust = 0) +
+  geom_text(x = 9, y = 0.1, data = data.frame(outfit = "red-belt medieval"),
+    label = "posterior predictions", vjust = 0, color = "gray50", hjust = 0) +
   transition_states(.draw, transition_length = 1, state_length = 1)
 
-animate(p, nframes = n_hops * 2, width = 250, height = 400)
+animate(p, nframes = n_hops * 2, width = 500, height = 400, res = 100)
 ```
 
 ![](barbarella_files/figure-gfm/barbarella_bar_hops-1.gif)<!-- -->
@@ -195,7 +210,10 @@ barb %>%
   add_predicted_draws(m, prediction = "rating", n = 100, seed = 494930) %>%
   ggplot(aes(x = rating)) +
   stat_count(aes(group = .draw, y = stat(prop)), geom = "line", position = "identity", alpha = .1) +
-  stat_count(aes(group = NA, y = stat(prop)), geom = "line", data = barb, color = "red", size = 1) 
+  stat_count(aes(group = NA, y = stat(prop)), geom = "line", data = barb, color = "red", size = 1) +
+  annotate("text", label = "observed data", x = 8.1, y = .17, color = "red", hjust = 0) +
+  annotate("text", label = "posterior\npredictions", x = 8.1, y = .13, color = "gray50", hjust = 0, lineheight = 1) +
+  coord_cartesian(xlim = c(1,9))
 ```
 
 ![](barbarella_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
