@@ -194,7 +194,26 @@ barb %>%
   coord_cartesian(xlim = c(1,9))
 ```
 
-Although then it probably makes sense to look at the CDF:
+You could think of the above chart as a parallel coordinates chart, where at each rating level we have the number (or proportion) of ratings in that bin for each replicated dataset (the posterior predictions) and for the observed dataset. Looked at that way, an alternative view would be a scatterplot matrix:
+
+```{r, fig.width = 10, fig.height = 10}
+barb %>%
+  select(outfit) %>%
+  add_predicted_draws(m, prediction = "rating", seed = 12345) %>%
+  group_by(.draw) %>%
+  count(rating) %>%
+  complete(rating, fill = list(n = 0)) %>%
+  pairwise(rating, n) %>%
+  ggplot(aes(.x, .y)) +
+  stat_bin_hex(aes(fill = stat(density)), binwidth = 3) +
+  geom_point(data = barb %>% count(rating) %>% pairwise(rating, n), color = "red") +
+  facet_grid(vars(.row), vars(.col)) +
+  xlab("Number of observations with rating = col") +
+  ylab("Number of observations with rating = row") +
+  scale_fill_distiller(palette = "Greys", direction = 1)
+```
+
+And it probably makes sense to look at the CDF:
 
 ```{r}
 barb %>%
