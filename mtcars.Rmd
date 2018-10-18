@@ -1,0 +1,96 @@
+---
+title: "Uncertainty examples with mtcars"
+output:
+  github_document:
+    toc: true
+---
+
+
+
+```{r setup}
+library(tidyverse)
+library(modelr)
+library(brms)
+library(tidybayes)
+library(gganimate)
+```
+
+
+```{r}
+mtcars %>%
+  ggplot(aes(x = hp, y = mpg)) +
+  geom_point()
+```
+
+```{r}
+m_linear = brm(mpg ~ hp, data = mtcars)
+```
+
+
+```{r}
+mtcars %>%
+  data_grid(hp = seq_range(hp, n = 101)) %>%
+  add_fitted_draws(m_linear, n = 100) %>%
+  ggplot(aes(x = hp)) +
+  geom_line(aes(y = .value, group = .draw), alpha = .2) +
+  geom_point(aes(y = mpg), data = mtcars)
+```
+
+
+```{r}
+mtcars %>%
+  data_grid(hp = seq_range(hp, n = 101)) %>%
+  add_fitted_draws(m_linear, n = 100) %>%
+  ggplot(aes(x = hp, y = mpg)) +
+  geom_line(aes(y = .value)) +
+  geom_point(data = mtcars) +
+  transition_manual(.draw)
+```
+
+
+
+```{r}
+m_loglog = brm(mpg ~ hp, data = mtcars, family = lognormal)
+```
+
+
+
+```{r}
+mtcars %>%
+  data_grid(hp = seq_range(hp, n = 101)) %>%
+  add_fitted_draws(m_loglog, n = 100) %>%
+  ggplot(aes(x = hp, y = mpg)) +
+  geom_line(aes(y = .value)) +
+  geom_point(data = mtcars) +
+  transition_manual(.draw)
+```
+
+
+
+```{r}
+mtcars_clean = mtcars %>%
+  mutate(transmission = factor(am, labels = c("automatic", "manual")))
+
+m_loglog_trans = brm(mpg ~ hp * transmission, data = mtcars_clean, family = lognormal)
+```
+
+```{r}
+mtcars_clean %>%
+  data_grid(hp = seq_range(hp, n = 101), transmission) %>%
+  add_fitted_draws(m_loglog_trans, n = 100) %>%
+  ggplot(aes(x = hp, y = mpg, color = transmission)) +
+  geom_line(aes(y = .value, group = paste(transmission, .draw)), alpha = .1) +
+  geom_point(data = mtcars_clean)
+```
+
+
+
+```{r}
+mtcars_clean %>%
+  data_grid(hp = seq_range(hp, n = 101), transmission) %>%
+  add_fitted_draws(m_loglog_trans, n = 100) %>%
+  ggplot(aes(x = hp, y = mpg, color = transmission)) +
+  geom_line(aes(y = .value)) +
+  geom_point(data = mtcars_clean) +
+  transition_manual(.draw)
+```
