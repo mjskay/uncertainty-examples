@@ -1,0 +1,162 @@
+---
+title: "Linear regression"
+output:
+  github_document:
+    toc: true
+---
+
+
+## Setup
+
+Libraries that might be of help:
+
+```{r setup, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+library(rstanarm)
+library(modelr)
+library(tidybayes)            # install from github
+library(gganimate)            # install from github
+
+theme_set(theme_light())
+```
+
+
+
+### Data
+
+Let's generate some vaguely linear data:
+
+```{r}
+set.seed(123)
+sample_size = 60
+a = 1
+b = 2
+sigma = 2
+
+
+df = data_frame(
+  x = seq(1, 10, length.out = sample_size),
+  y = rnorm(sample_size, a + b * x, sigma),
+  group = rep(c("a", "b"), sample_size/2),
+  x_centered = x - mean(x)
+) 
+
+df
+```
+
+```{r fig.width = 5, fig.height = 5}
+df %>%
+  ggplot(aes(x = x, y = y)) +
+  geom_point() 
+```
+
+```{r}
+m = stan_glm(y ~ x, data = df)
+```
+
+### Visualizations
+
+#### "Half-eye" plot / interval + density
+
+```{r fig.width = 5.5, fig.height = 5}
+m %>%
+  gather_draws(`(Intercept)`, x, sigma) %>%
+  ggplot(aes(x = .value, y = .variable)) +
+  geom_halfeyeh()
+```
+
+#### Quantile dotplots
+
+```{r fig.width = 5, fig.height = 5}
+m %>%
+  gather_draws(`(Intercept)`, x, sigma) %>%
+  do(data.frame(.value = quantile(.$.value, ppoints(100)))) %>%
+  ggplot(aes(x = .value)) +
+  geom_dotplot(binwidth = 0.04) +
+  facet_grid(.variable ~ .)
+```
+
+#### HOPs of coefficients
+
+```{r fig.width = 5, fig.height = 5}
+m %>%
+  gather_draws(`(Intercept)`, x, sigma) %>%
+  filter(.draw %in% floor(seq_range(.draw, n = 100))) %>%
+  ggplot(aes(x = .value, y = .variable)) +
+  geom_point() +
+  transition_manual(.draw)
+```
+
+Controlling framerate:
+
+```{r fig.width = 5, fig.height = 5}
+p = m %>%
+  gather_draws(`(Intercept)`, x, sigma) %>%
+  filter(.draw %in% floor(seq_range(.draw, n = 100))) %>%
+  ggplot(aes(x = .value, y = .variable)) +
+  geom_point() +
+  transition_manual(.draw)
+
+animate(p, fps = 5)
+```
+
+#### Fit lines with uncertainty bands
+
+```{r fig.width = 5, fig.height = 5}
+df %>%
+  add_fitted_draws(m) %>%
+  ggplot(aes(x = x, y = .value)) +
+  stat_lineribbon(.width = c(.50, .80, .95), fill = "gray50", alpha = .25) +
+  geom_point(aes(y = y), data = df)
+```
+
+#### Overplotted regression lines
+
+```{r fig.width = 5, fig.height = 5}
+df %>%
+  add_fitted_draws(m, n = 100) %>%
+  ggplot(aes(x = x, y = .value)) +
+  geom_line(aes(group = .draw), alpha = 0.1, color = "red") +
+  geom_point(aes(y = y), data = df)
+```
+
+#### Regression lines as animated HOPs
+
+Basic example:
+
+```{r fig.width = 5, fig.height = 5}
+df %>%
+  add_fitted_draws(m, n = 100) %>%
+  ggplot(aes(x = x, y = .value)) +
+  geom_line(color = "red") +
+  geom_point(aes(y = y), data = df) +
+  transition_manual(.draw)
+```
+
+Showing how to control speed:
+
+```{r fig.width = 5, fig.height = 5}
+p = df %>%
+  add_fitted_draws(m, n = 100) %>%
+  ggplot(aes(x = x, y = .value)) +
+  geom_line(color = "red") +
+  geom_point(aes(y = y), data = df) +
+  transition_manual(.draw)
+
+animate(p, fps = 3)
+```
+
+
+
+#### Posterior predictions with uncertainty bands
+
+```{r fig.width = 5.5, fig.height = 5}
+df %>%
+  add_predicted_draws(m) %>%
+  ggplot(aes(x = x, y = .prediction)) +
+  stat_lineribbon() +
+  scale_fill_brewer() +
+  geom_point(aes(y = y), data = df)
+```
