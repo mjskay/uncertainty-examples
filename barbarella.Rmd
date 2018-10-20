@@ -16,7 +16,7 @@ library(rstan)
 library(brms)
 library(tidybayes)
 library(ggstance)
-library(gganimate)      # devtools::install_github("/thomasp85/gganimate")
+library(gganimate)      # devtools::install_github("thomasp85/gganimate")
 library(forcats)
 
 theme_set(theme_tidybayes())
@@ -144,11 +144,9 @@ barb %>%
 Although perhaps using hypothetical outcome plots (HOPs) [@Hullman2015; @Kale2018] makes more sense here:
 
 ```{r barbarella_bar_hops, fig.width = 5, fig.height = 4, cache = TRUE}
-n_hops =  100
-
 p = barb %>%
   select(outfit) %>%
-  add_predicted_draws(m, prediction = "rating", n = n_hops, seed = 494930) %>%
+  add_predicted_draws(m, prediction = "rating", n = 100, seed = 494930) %>%
   ggplot(aes(x = rating, group = NA)) +
   geom_bar(aes(y = stat(prop)), fill = "gray75") +
   geom_bar(aes(y = stat(prop)), data = barb, color = "red", fill = "red", alpha = 0.25) +
@@ -162,9 +160,9 @@ p = barb %>%
     label = "observed data", vjust = 0, color = "red", hjust = 0) +
   geom_text(x = 9, y = 0.1, data = data.frame(outfit = "red-belt medieval"),
     label = "posterior predictions", vjust = 0, color = "gray50", hjust = 0) +
-  transition_states(.draw, transition_length = 1, state_length = 1)
+  transition_manual(.draw)
 
-animate(p, nframes = n_hops * 2, width = 500, height = 400, res = 100)
+animate(p, fps = 5, width = 500, height = 400, res = 100)
 ```
 
 This is overwhelming at first, but if you focus on particular regions it can be legible.
@@ -203,10 +201,10 @@ barb %>%
   group_by(.draw) %>%
   count(rating) %>%
   complete(rating, fill = list(n = 0)) %>%
-  pairwise(rating, n) %>%
+  gather_pairs(rating, n) %>%
   ggplot(aes(.x, .y)) +
   stat_bin_hex(aes(fill = stat(density)), binwidth = 3) +
-  geom_point(data = barb %>% count(rating) %>% pairwise(rating, n), color = "red") +
+  geom_point(data = barb %>% count(rating) %>% gather_pairs(rating, n), color = "red") +
   facet_grid(vars(.row), vars(.col)) +
   xlab("Number of observations with rating = col") +
   ylab("Number of observations with rating = row") +
