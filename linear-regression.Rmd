@@ -145,7 +145,7 @@ p = df %>%
   geom_point(aes(y = y), data = df) +
   transition_manual(.draw)
 
-animate(p, fps = 3)
+animate(p, fps = 5)
 ```
 
 

@@ -87,8 +87,8 @@ m = stan_glm(y ~ x, data = df)
     ## Iteration: 1800 / 2000 [ 90%]  (Sampling)
     ## Iteration: 2000 / 2000 [100%]  (Sampling)
     ## 
-    ##  Elapsed Time: 0.051 seconds (Warm-up)
-    ##                0.047 seconds (Sampling)
+    ##  Elapsed Time: 0.052 seconds (Warm-up)
+    ##                0.046 seconds (Sampling)
     ##                0.098 seconds (Total)
     ## 
     ## 
@@ -112,9 +112,9 @@ m = stan_glm(y ~ x, data = df)
     ## Iteration: 1800 / 2000 [ 90%]  (Sampling)
     ## Iteration: 2000 / 2000 [100%]  (Sampling)
     ## 
-    ##  Elapsed Time: 0.05 seconds (Warm-up)
-    ##                0.045 seconds (Sampling)
-    ##                0.095 seconds (Total)
+    ##  Elapsed Time: 0.049 seconds (Warm-up)
+    ##                0.042 seconds (Sampling)
+    ##                0.091 seconds (Total)
     ## 
     ## 
     ## SAMPLING FOR MODEL 'continuous' NOW (CHAIN 3).
@@ -137,9 +137,9 @@ m = stan_glm(y ~ x, data = df)
     ## Iteration: 1800 / 2000 [ 90%]  (Sampling)
     ## Iteration: 2000 / 2000 [100%]  (Sampling)
     ## 
-    ##  Elapsed Time: 0.058 seconds (Warm-up)
-    ##                0.052 seconds (Sampling)
-    ##                0.11 seconds (Total)
+    ##  Elapsed Time: 0.052 seconds (Warm-up)
+    ##                0.044 seconds (Sampling)
+    ##                0.096 seconds (Total)
     ## 
     ## 
     ## SAMPLING FOR MODEL 'continuous' NOW (CHAIN 4).
@@ -162,9 +162,9 @@ m = stan_glm(y ~ x, data = df)
     ## Iteration: 1800 / 2000 [ 90%]  (Sampling)
     ## Iteration: 2000 / 2000 [100%]  (Sampling)
     ## 
-    ##  Elapsed Time: 0.059 seconds (Warm-up)
-    ##                0.048 seconds (Sampling)
-    ##                0.107 seconds (Total)
+    ##  Elapsed Time: 0.066 seconds (Warm-up)
+    ##                0.045 seconds (Sampling)
+    ##                0.111 seconds (Total)
 
 ### Visualizations
 
@@ -269,7 +269,7 @@ p = df %>%
   geom_point(aes(y = y), data = df) +
   transition_manual(.draw)
 
-animate(p, fps = 3)
+animate(p, fps = 5)
 ```
 
 ![](linear-regression_files/figure-gfm/unnamed-chunk-11-1.gif)<!-- -->
