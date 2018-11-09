@@ -139,7 +139,7 @@ rescor_plot_heat = m %>%
   geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
   stat_pointintervalh() +
   xlim(c(-1, 1)) +
-  xlab("rescor") +
+  xlab("residual correlation") +
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
