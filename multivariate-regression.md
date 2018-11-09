@@ -13,6 +13,7 @@ library(rstan)
 library(brms)
 library(modelr)
 library(tidybayes)
+library(patchwork)  # devtools::install_github("thomasp85/patchwork")
 
 theme_set(theme_light())
 rstan_options(auto_write = TRUE)
@@ -102,3 +103,35 @@ df %>%
 ```
 
 ![](multivariate-regression_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+
+## Or side-by-side
+
+Actually, it occurs to me that the traditional “flipped on the axis”
+double-scatterplot-matrix can be hard to read, because it is hard to
+mentally do the diagonal-mirroring operation to figure out which cell on
+one side goes with the other. I find it easier to just map from the same
+cell in one matrix onto another, which suggests something like this
+might be better:
+
+``` r
+data_plot = df %>%
+  gather(.variable, .value) %>%
+  gather_pairs(.variable, .value) %>%
+  ggplot(aes(.x, .y)) +
+  geom_point() +
+  facet_grid(.row ~ .col)
+
+rescor_plot = m %>%
+  gather_draws(`rescor.*`, regex = TRUE) %>%
+  separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
+  ggplot(aes(x = .value, y = 0)) +
+  geom_halfeyeh() +
+  xlim(c(-1, 1)) +
+  xlab("rescor") +
+  ylab(NULL) +
+  facet_grid(.row ~ .col)
+
+data_plot + rescor_plot
+```
+
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
