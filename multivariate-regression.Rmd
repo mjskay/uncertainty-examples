@@ -53,7 +53,7 @@ df %>%
 
 ### Model
 
-```{r}
+```{r, cache = TRUE}
 m = brm(cbind(y1, y2, y3) ~ 1, data = df)
 ```
 
@@ -107,7 +107,7 @@ data_plot = df %>%
   gather(.variable, .value) %>%
   gather_pairs(.variable, .value) %>%
   ggplot(aes(.x, .y)) +
-  geom_point() +
+  geom_point(size = 1) +
   facet_grid(.row ~ .col)
 
 rescor_plot = m %>%
@@ -137,15 +137,105 @@ rescor_plot_heat = m %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
   ggplot(aes(x = .value, y = 0)) +
   geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
+  geom_vline(xintercept = 0, color = "gray65", linetype = "dashed") +
   stat_pointintervalh() +
   xlim(c(-1, 1)) +
   xlab("residual correlation") +
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
-  geom_vline(xintercept = 0, color = "gray65", linetype = "dashed") +
   coord_flip() +
   facet_grid(.row ~ .col)
 
 data_plot + rescor_plot_heat
 ```
+
+## Okay, but does it scale?
+
+Let's add some more variables...
+
+```{r}
+set.seed(1234)
+
+df_large =  data_frame(
+  y1 = rnorm(20),
+  y2 = rnorm(20, y1),
+  y3 = rnorm(20, -y1),
+  y4 = rnorm(20, 0.5 * y1),
+  y5 = rnorm(20),
+  y6 = rnorm(20, -.25 * y1),
+  y7 = rnorm(20, -y5),
+  y8 = rnorm(20, -0.5 * y5)
+)
+```
+
+```{r}
+data_plot_large = df_large %>%
+  gather(.variable, .value) %>%
+  gather_pairs(.variable, .value) %>%
+  ggplot(aes(.x, .y)) +
+  geom_point(size = 1) +
+  facet_grid(.row ~ .col)
+
+data_plot_large
+```
+
+```{r, cache = TRUE}
+m_large = brm(cbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large)
+```
+
+### Density version
+
+```{r, fig.width = 8, fig.height = 4, warning = FALSE, message = FALSE}
+rescor_plot_heat_large = m_large %>%
+  gather_draws(`rescor.*`, regex = TRUE) %>%
+  separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
+  ggplot(aes(x = .value, y = 0)) +
+  geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
+  geom_vline(xintercept = 0, color = "gray85") +
+  stat_pointintervalh() +
+  xlim(c(-1, 1)) +
+  xlab("residual correlation") +
+  ylab(NULL) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  coord_flip() +
+  facet_grid(.row ~ .col)
+
+data_plot_large + rescor_plot_heat_large
+```
+
+You can still pick out the high/low correlations by color, though it isn't quite as easy.
+
+### Dither approach
+
+A different, more frequency-framing approach, would be to use dithering to show uncertainty (see e.g. Figure 4 from [this paper](http://doi.wiley.com/10.1002/sta4.150)). This is akin to something like an icon array. You should still be able to see the average color (thanks to the human visual system's ensembling processing), but also get a sense of the uncertainty by how "dithered" a square looks:
+
+```{r, fig.width = 9, fig.height = 4}
+w = 40
+h = 40
+
+rescor_plot_heat_dither = m_large %>%
+  gather_draws(`rescor.*`, regex = TRUE) %>%
+  separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
+  group_by(.row, .col) %>%
+  summarise(
+    .value = list(sample(.value, w * h)),
+    x = list(rep(1:w, times = h)),
+    y = list(rep(1:h, each = w))
+  ) %>%
+  unnest() %>%
+  ggplot(aes(x, y, fill = .value)) +
+  geom_raster() +
+  facet_grid(.row ~ .col) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "residual\ncorrelation") +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_cartesian(expand = FALSE)
+
+data_plot_large + rescor_plot_heat_dither
+```
+
