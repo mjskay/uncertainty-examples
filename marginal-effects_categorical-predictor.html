@@ -424,7 +424,7 @@ q | A, B &amp;= g_p(A, B)\\
 \textrm{E}[y | A, B] &amp;= q | A, B
 \end{align}
 \]</span></p>
-<p>Put another way, what’s the probability that a new observation <span class="math inline">\(y\)</span> will be equal to <code>TRUE</code> given its particular values of <span class="math inline">\(A\)</span> and <span class="math inline">\(B\)</span>?</p>
+<p>Put another way, what proportion of observations in the population do we expect to be equal to <code>TRUE</code> for each combination of values of <span class="math inline">\(A\)</span> and <span class="math inline">\(B\)</span>?</p>
 <p>Fortunately, <code>add_fitted_draws</code> gives us the posterior distribution for exactly this quantity:</p>
 <pre class="r"><code>AB_plot = df %&gt;%
   data_grid(A, B) %&gt;%
@@ -472,7 +472,6 @@ AB_plot</code></pre>
 \end{align}
 \]</span></p>
 <p><strong>It is very important to stress</strong> that this depends on a population made up of equal proportions of all possible values of <span class="math inline">\(B\)</span> being a meaningful thing to talk about.</p>
-<p>Also remember that all of these expectations are random variables.</p>
 <p>Given the above, we can take the following steps to get the marginalized version:</p>
 <ol style="list-style-type: decimal">
 <li>Condition on all values of categorical variables (using <code>modelr::data_grid</code>)</li>

@@ -98,7 +98,7 @@ $$
 \end{align}
 $$
 
-Put another way, what's the probability that a new observation $y$ will be equal to `TRUE` given its particular values of $A$ and $B$?
+Put another way, what proportion of observations in the population do we expect to be equal to `TRUE` for each combination of values of $A$ and $B$?
 
 Fortunately, `add_fitted_draws` gives us the posterior distribution for exactly this quantity:
 
@@ -158,8 +158,6 @@ $$
 $$
 
 **It is very important to stress** that this depends on a population made up of equal proportions of all possible values of $B$ being a meaningful thing to talk about.
-
-Also remember that all of these expectations are random variables.
 
 Given the above, we can take the following steps to get the marginalized version:
 
