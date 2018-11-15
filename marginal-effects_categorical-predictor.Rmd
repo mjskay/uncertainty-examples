@@ -1,0 +1,227 @@
+---
+title: "Marginal effects from categorical predictors"
+output:
+  html_document:
+    toc: true
+---
+
+This walks through generating average marginal effects on the response scale for models with categorical predictors using `tidybayes::add_fitted_draws`. The example here uses `rstanarm`, but should work with minimal modification on `brms` as well.
+
+Note: I am relatively new to average marginal effects, so this is partially my attempt to explain them and partially my attempt to better understand them myself. If there is anything here that looks off to you, please file an issue or a pull request.
+
+## Setup
+
+```{r setup, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+library(rstan)
+library(rstanarm)
+library(modelr)
+library(tidybayes)
+library(ggstance)
+library(patchwork)
+library(latex2exp)
+
+theme_set(theme_light() + theme(
+  panel.border = element_blank()
+))
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+
+
+### Data
+
+```{r}
+set.seed(12345)
+a1_prob = .3
+a2_prob = .7
+k = 40
+
+df = bind_rows(
+  data_frame(A = "a1", B = "b1", y = rbinom(k, 1, a1_prob) == 1),
+  data_frame(A = "a2", B = "b1", y = rbinom(k, 1, a2_prob) == 1),
+  data_frame(A = "a1", B = "b2", y = rbinom(k, 1, a1_prob + .1) == 1),
+  data_frame(A = "a2", B = "b2", y = rbinom(k, 1, a2_prob + .1) == 1)
+)
+```
+
+### Data plot
+
+```{r}
+df %>%
+  ggplot(aes(y = B, fill = y)) +
+  geom_barh() +
+  facet_grid(A ~ .) +
+  scale_fill_brewer()
+```
+
+### Model
+
+```{r, cache = TRUE}
+m = stan_glm(y ~ A*B, data = df, family = binomial)
+```
+
+```{r}
+summary(m)
+```
+
+### Marginal effects at particular/"representative" values ("MER" marginal effects)
+
+Let's say we want to know the marginal mean conditional on particular values of our predictors. This is essentially what `add_fitted_draws`/`posterior_linpred` give us.
+
+For example, the model above is something like this:
+
+$$
+\begin{align}
+y | A, B &\sim \textrm{Bernoulli}(q | A, B)\\
+q | A, B &= g_p(A, B)
+\end{align}
+$$
+
+Each observation is drawn from a Bernoulli distribution, and the probability of an observation being `TRUE` is equal to $q$, which is a function of $A$ and $B$. For simplicity, we've just let that be some function $g_p(A, B)$. If we want to get particular about it, that function for the above model is something like this:
+
+$$
+\begin{align}
+q | A, B &= g_p(A, B)\\
+ &= \textrm{logit}^{-1}(\alpha + \beta_A[A = a_2] + \beta_B[B = b_2] + \beta_{AB}[A = a_2][B=b_2])
+\end{align}
+$$
+
+But the actual function $g_p$ **doesn't really matter for our purposes**, so long as there's something that can calculate it for us. What we want to know the expected value of $y$, which is the same thing as the probability $q$:
+
+$$
+\begin{align}
+\textrm{E}[y | A, B] &= q | A, B
+\end{align}
+$$
+
+Put another way, what's the probability that a new observation $y$ will be equal to `TRUE` given its particular values of $A$ and $B$?
+
+Fortunately, `add_fitted_draws` gives us the posterior distribution for exactly this quantity:
+
+```{r}
+AB_plot = df %>%
+  data_grid(A, B) %>%
+  # `value` just changes the column name in the output, not what any of the results are.
+  # I've set to "E[y|A,B]" to make the correspondence to the math clear as this gets more
+  # complicated as we go along
+  add_fitted_draws(m, value = "E[y|A,B]") %>%
+  ggplot(aes(y = paste0("E[y|A = ", A, ", B = ", B, "]"), x = `E[y|A,B]`, fill = A)) +
+  geom_halfeyeh() +
+  facet_grid(A ~ ., scales = "free") +
+  xlim(0, 1) +
+  ylab("B") +
+  geom_vline(xintercept = c(0, 1))
+
+AB_plot
+```
+
+### Average marginal effects ("AME")
+
+But let's say we wanted to get the average effect for each value of $A$, marginalizing over $B$. So we want:
+
+$$
+\begin{align}
+\textrm{E}[y | A]
+\end{align}
+$$
+
+Our model can't give us that directly. But we can use the [law of total expectation](https://en.wikipedia.org/wiki/Law_of_total_expectation) to express this expectation in terms of things we *can* get our model to give us:
+
+$$
+\begin{align}
+&E[y | A] &=& &\sum_{b \in \mathcal{B}}&\textrm{E}[y | A, B = b] \Pr[B = b]\\
+&&=&&& \textrm{E}[y | A, B = b_1] \Pr[B = b_1] +\\&&&&& \textrm{E}[y | A, B = b_2] \Pr[B = b_2]
+\end{align}
+$$
+
+Two of these quantities are given to us by `fitted_draws`: $\textrm{E}[y | A, B = b_1]$ and $\textrm{E}[y | A, B = b_2]$. 
+
+However, we still need $\Pr[B = b_1]$ and $\Pr[B = b_2]$ to generate a marginal effect. These probabilities must come from somewhere else: maybe our experimental design, or maybe the population we're interested in. For now, we'll assume $\Pr[B = b_1] = \Pr[B = b_2] = 0.5$, i.e. $b_1$ and $b_2$ are equally likely in the population. Then we have:
+
+$$
+\begin{align}
+&E[y | A] &=&&& \textrm{E}[y | A, B = b_1] \Pr[B = b_1] +\\&&&&& \textrm{E}[y | A, B = b_2] \Pr[B = b_2]\\
+&&=&&& \textrm{E}[y | A, B = b_1] \cdot 0.5 +\\&&&&& \textrm{E}[y | A, B = b_2] \cdot 0.5
+\end{align}
+$$
+
+Or equivalently, when we assume that all levels of some categorical variable we want to marginalize out are equally likely, then we can use an unweighted mean to marginalize it out:
+
+$$
+\begin{align}
+&E[y | A] &=&& {1 \over |\mathcal{B}|} \sum_{b \in \mathcal{B}}\textrm{E}[y | A, B = b]
+\end{align}
+$$
+
+**It is very important to stress** that this depends on a population made up of equal proportions of all possible values of $B$ being a meaningful thing to talk about.
+
+Also remember that all of these expectations are random variables.
+
+Given the above, we can take the following steps to get the marginalized version:
+
+1. Condition on all values of categorical variables (using `modelr::data_grid`)
+2. Get draws from the distribution for the expected value of the response conditional on those variables (using `tidybayes::add_fitted_draws`)
+3. Group by every predictor we don't want to marginalize out + the `.draw` column (so we average within draws)
+3. Marginalize out the categorical variables we don't care about by averaging over them (`dplyr::summarise` + `mean`, or `dplyr::summarise` + `weighted.mean` if you have non-equal proportions for your population)
+
+```{r fig.height = 6, fig.width = 6}
+A_plot = df %>%
+  data_grid(A, B) %>%                          # condition on everything
+  add_fitted_draws(m, value = "E[y|A,B]") %>%  # get conditional expectations
+  group_by(A, .draw) %>%                       # group by predictors to keep
+  summarise(`E[y|A]` = mean(`E[y|A,B]`)) %>%   # marginalize out other predictors
+  ggplot(aes(y = paste0("E[y|A = ", A, "]"), x = `E[y|A]`, fill = A)) +
+  geom_halfeyeh() +
+  xlim(0, 1) +
+  facet_grid(A ~ ., scale = "free") +
+  ylab(NULL) +
+  geom_vline(xintercept = c(0, 1)) +
+  theme(panel.border = element_blank())
+
+A_plot / AB_plot + 
+  plot_layout(heights = c(1, 2)) 
+```
+
+You should be able to see how the marginalized effects in the top plot are the averages of the corresponding distributions in the lower plot.
+
+If all went well, these marginalized effects should line up well with the observed proportions in the data (since they had equal numbers of observations per condition and we haven't used any strong priors):
+
+```{r}
+marginal_data_plot = df %>%
+  ggplot(aes(y = fct_rev(A), fill = y)) +
+  geom_barh() +
+  scale_fill_brewer() +
+  ylab("A")
+
+A_plot / marginal_data_plot
+```
+
+### Versus a model without B
+
+Because there are an equal number of observations in every group in this dataset, these estimate line up with what we would get if we just omitted B from the model altogether:
+
+```{r}
+m2 = stan_glm(y ~ A, data = df, family = binomial)
+```
+
+```{r}
+A_plot_2 = df %>%
+  data_grid(A) %>%                            # condition on everything
+  add_fitted_draws(m2, value = "E[y|A]") %>%  # get conditional expectations
+  ggplot(aes(y = paste0("E[y|A = ", A, "]"), x = `E[y|A]`, fill = A)) +
+  geom_halfeyeh() +
+  xlim(0, 1) +
+  facet_grid(A ~ ., scale = "free") +
+  ylab(NULL) +
+  xlab("E[y|A], from model without B") +
+  geom_vline(xintercept = c(0, 1)) +
+  theme(panel.border = element_blank())
+
+A_plot / A_plot_2
+```
+
+This would not be the case if we had unequal cell sizes.
