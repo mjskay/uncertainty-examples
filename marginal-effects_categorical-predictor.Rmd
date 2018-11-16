@@ -32,7 +32,7 @@ options(mc.cores = parallel::detectCores())
 
 
 
-### Data
+## Data
 
 ```{r}
 set.seed(12345)
@@ -58,7 +58,7 @@ df %>%
   scale_fill_brewer()
 ```
 
-### Model
+## Model
 
 ```{r, cache = TRUE}
 m = stan_glm(y ~ A*B, data = df, family = binomial)
@@ -68,7 +68,7 @@ m = stan_glm(y ~ A*B, data = df, family = binomial)
 summary(m)
 ```
 
-### Marginal effects at particular/"representative" values ("MER" marginal effects)
+## Marginal effects at particular/"representative" values ("MER" marginal effects)
 
 Let's say we want to know the marginal mean conditional on particular values of our predictors. This is essentially what `add_fitted_draws`/`posterior_linpred` give us.
 
@@ -119,7 +119,7 @@ AB_plot = df %>%
 AB_plot
 ```
 
-### Average marginal effects ("AME")
+## Average marginal effects ("AME")
 
 But let's say we wanted to get the average effect for each value of $A$, marginalizing over $B$. So we want:
 
@@ -177,8 +177,7 @@ A_plot = df %>%
   xlim(0, 1) +
   facet_grid(A ~ ., scale = "free") +
   ylab(NULL) +
-  geom_vline(xintercept = c(0, 1)) +
-  theme(panel.border = element_blank())
+  geom_vline(xintercept = c(0, 1))
 
 A_plot / AB_plot + 
   plot_layout(heights = c(1, 2)) 
@@ -216,10 +215,63 @@ A_plot_2 = df %>%
   facet_grid(A ~ ., scale = "free") +
   ylab(NULL) +
   xlab("E[y|A], from model without B") +
-  geom_vline(xintercept = c(0, 1)) +
-  theme(panel.border = element_blank())
+  geom_vline(xintercept = c(0, 1))
 
 A_plot / A_plot_2
 ```
 
 This would not be the case if we had unequal cell sizes.
+
+
+### Differences in AMEs
+
+Given $\textrm{E}[y | A = a_1]$ and $\textrm{E}[y | A = a_2]$ as before:
+
+```{r fig.height = 2, fig.width = 6}
+A_plot
+```
+
+We might want to derive the posterior distribution for the difference in these means:
+
+$$
+\textrm{E}[y | A = a_2] - \textrm{E}[y | A = a_1]
+$$
+
+Since we can generate draws from the distributions for both quantities, we can use `tidybayes::compare_levels` to compute this difference (this will simply subtract the draws from pairwise combinations of sets of draws, according to the levels of some factor; in this case, `A`):
+
+```{r, fig.height = 3, fig.width = 6}
+# this part is the same as before
+marginal_effects = df %>%
+  data_grid(A, B) %>%                          # condition on everything
+  add_fitted_draws(m, value = "E[y|A,B]") %>%  # get conditional expectations
+  group_by(A, .draw) %>%                       # group by predictors to keep
+  summarise(`E[y|A]` = mean(`E[y|A,B]`))       # marginalize out other predictors
+
+
+# we can use compare_levels to calculate the mean difference
+mean_diffs = marginal_effects %>%
+  compare_levels(`E[y|A]`, by = A) %>%         # pairwise differences in `E[y|A]`, by levels of A
+  rename(`mean difference` = `E[y|A]`)         # give this column a more accurate name
+  
+
+# this is just so we can align the plot axes below
+median_a1 = marginal_effects %>%
+  filter(A == "a1") %$%
+  median(`E[y|A]`)
+
+A_plot_diff = mean_diffs %>%   
+  ggplot(aes(y = A, x = `mean difference`)) +
+  geom_halfeyeh() +
+  ylab(NULL) +
+  geom_vline(xintercept = c(0, 1), linetype = "dashed") +
+  coord_cartesian(xlim = c(-median_a1, 1 - median_a1))
+
+(A_plot + geom_vline(xintercept = median_a1, linetype = "dashed")) / 
+  A_plot_diff +
+  plot_layout(heights = c(2, 1))
+```
+
+
+
+
+
