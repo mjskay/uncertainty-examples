@@ -239,7 +239,7 @@ $$
 
 Since we can generate draws from the distributions for both quantities, we can use `tidybayes::compare_levels` to compute this difference (this will simply subtract the draws from pairwise combinations of sets of draws, according to the levels of some factor; in this case, `A`):
 
-```{r, fig.height = 3, fig.width = 6}
+```{r, fig.height = 1.25, fig.width = 5}
 # this part is the same as before
 marginal_effects = df %>%
   data_grid(A, B) %>%                          # condition on everything
@@ -253,7 +253,16 @@ mean_diffs = marginal_effects %>%
   compare_levels(`E[y|A]`, by = A) %>%         # pairwise differences in `E[y|A]`, by levels of A
   rename(`mean difference` = `E[y|A]`)         # give this column a more accurate name
   
+mean_diffs %>%
+  ggplot(aes(x = `mean difference`, y = A)) +
+  geom_halfeyeh() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlim(-.4, .6)
+```
 
+And here's a fancy version of this plot, aligned with the marginal estimates:
+
+```{r, fig.height = 3, fig.width = 6}
 # this is just so we can align the plot axes below
 median_a1 = marginal_effects %>%
   filter(A == "a1") %$%
