@@ -28,8 +28,7 @@ a stream-of-consciousness style. You have been warned.
 
   - [multivariate-regression](multivariate-regression.md): a meandering
     attempt to improve on correlation heatmaps, including the use of
-    gradients within density plots and a “dithring” approach to
-    uncertainty visualization.
+    gradients within density plots and a “dithering” approach.
 
   - [barbarella](barbarella.md): visualizations for a survey with a
     10-point rating scale analyzed with an ordinal regression model.

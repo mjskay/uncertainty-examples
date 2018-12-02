@@ -17,7 +17,7 @@ These are typically pretty roughly thrown together, and are in a bit of a stream
 
 - [linear-regression](linear-regression.md): a variety of approaches applied to a linear regression: HOPs, density+interval, and quantile dotplots of coefficients; multiple uncertainty bands, spaghetti plots, and HOPs for uncertainty in the fit line; and posterior predictive intervals for predictive uncertainty.
 
-- [multivariate-regression](multivariate-regression.md): a meandering attempt to improve on correlation heatmaps, including the use of gradients within density plots and a "dithring" approach to uncertainty visualization.
+- [multivariate-regression](multivariate-regression.md): a meandering attempt to improve on correlation heatmaps, including the use of gradients within density plots and a "dithering" approach.
 
 - [barbarella](barbarella.md): visualizations for a survey with a 10-point rating scale analyzed with an ordinal regression model. Includes some posterior predictive checks, HOPs (animated uncertainty), quantile dotplots, and density+interval ("half-eye") plots.
 
