@@ -119,8 +119,11 @@ data_plot = df %>%
   gather(.variable, .value) %>%
   gather_pairs(.variable, .value) %>%
   ggplot(aes(.x, .y)) +
-  geom_point(size = 1) +
-  facet_grid(.row ~ .col)
+  geom_point(size = 1.5) +
+  facet_grid(.row ~ .col) +
+  theme(panel.grid.minor = element_blank()) +
+  xlab(NULL)+ 
+  ylab(NULL)
 
 rescor_plot = m %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
@@ -130,7 +133,9 @@ rescor_plot = m %>%
   xlim(c(-1, 1)) +
   xlab("rescor") +
   ylab(NULL) +
-  facet_grid(.row ~ .col)
+  facet_grid(.row ~ .col) +
+  xlab("correlation") +
+  scale_y_continuous(breaks = NULL) 
 
 data_plot + rescor_plot
 ```
@@ -156,7 +161,7 @@ rescor_plot_heat = m %>%
   geom_vline(xintercept = 0, color = "gray65", linetype = "dashed") +
   stat_pointintervalh() +
   xlim(c(-1, 1)) +
-  xlab("residual correlation") +
+  xlab("correlation") +
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
@@ -193,7 +198,10 @@ data_plot_large = df_large %>%
   gather_pairs(.variable, .value) %>%
   ggplot(aes(.x, .y)) +
   geom_point(size = 1) +
-  facet_grid(.row ~ .col)
+  facet_grid(.row ~ .col) +
+  theme(panel.grid.minor = element_blank()) +
+  xlab(NULL) +
+  ylab(NULL)
 
 data_plot_large
 ```
@@ -212,16 +220,18 @@ m_large = brm(cbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large)
 
 ### Density version
 
+I’ve dropped the intervals for this (they start to become illegible) and
+did a few other minor tweaks for clarity:
+
 ``` r
 rescor_plot_heat_large = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
   ggplot(aes(x = .value, y = 0)) +
   geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
-  geom_vline(xintercept = 0, color = "gray85") +
-  stat_pointintervalh() +
+  geom_vline(xintercept = 0, color = "white", size = 1) +
   xlim(c(-1, 1)) +
-  xlab("residual correlation") +
+  xlab("correlation") +
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
@@ -248,8 +258,8 @@ processing), but also get a sense of the uncertainty by how “dithered” a
 square looks:
 
 ``` r
-w = 40
-h = 40
+w = 60
+h = 60
 
 rescor_plot_heat_dither = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
@@ -264,7 +274,7 @@ rescor_plot_heat_dither = m_large %>%
   ggplot(aes(x, y, fill = .value)) +
   geom_raster() +
   facet_grid(.row ~ .col) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "residual\ncorrelation") +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "corr.") +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
   xlab(NULL) +
@@ -275,3 +285,60 @@ data_plot_large + rescor_plot_heat_dither
 ```
 
 ![](multivariate-regression_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+
+### Densities with heatmaps?
+
+Going back to densities, what if the point estimate is used to set the
+cell backgorund — maybe that will help that format have a high-level
+gist while retaining its more accurate depiction of the uncertainty:
+
+``` r
+rescor_plot_heat_large = m_large %>%
+  gather_draws(`rescor.*`, regex = TRUE) %>%
+  separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
+  ggplot(aes(x = .value, y = 0)) +
+  geom_tile(aes(x = 0, y = 0.5, width = 2, height = 1, fill = .value),
+    data = function(df) df %>% group_by(.row, .col) %>% median_qi(.value)) +
+  geom_density_ridges_gradient(aes(height = stat(ndensity), fill = stat(x)), color = NA, scale = 1) +
+  geom_vline(xintercept = 0, color = "white", alpha = .5) +
+  geom_density_ridges(aes(height = stat(ndensity)), fill = NA, color = "gray50", scale = 1) +
+  xlim(c(-1, 1)) +
+  xlab("correlation") +
+  ylab(NULL) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  coord_flip(expand = FALSE) +
+  facet_grid(.row ~ .col)
+
+data_plot_large + rescor_plot_heat_large
+```
+
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+
+This is, admittedly, a bit weird…
+
+## The no-uncertainty heatmap
+
+For reference:
+
+``` r
+rescor_plot_heat_large = m_large %>%
+  gather_draws(`rescor.*`, regex = TRUE) %>%
+  separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
+  group_by(.row, .col) %>% 
+  median_qi(.value) %>%
+  ggplot(aes(x = 0, y = 0, fill = .value)) +
+  geom_raster() +
+  xlab("correlation") +
+  ylab(NULL) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  coord_flip(expand = FALSE) +
+  facet_grid(.row ~ .col)
+
+data_plot_large + rescor_plot_heat_large
+```
+
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->

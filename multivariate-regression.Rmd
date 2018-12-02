@@ -102,13 +102,16 @@ df %>%
 
 Actually, it occurs to me that the traditional "flipped on the axis" double-scatterplot-matrix can be hard to read, because it is hard to mentally do the diagonal-mirroring operation to figure out which cell on one side goes with the other. I find it easier to just map from the same cell in one matrix onto another, which suggests something like this might be better:
 
-```{r, fig.width = 8, fig.height = 4}
+```{r, fig.width = 10, fig.height = 5}
 data_plot = df %>%
   gather(.variable, .value) %>%
   gather_pairs(.variable, .value) %>%
   ggplot(aes(.x, .y)) +
-  geom_point(size = 1) +
-  facet_grid(.row ~ .col)
+  geom_point(size = 1.5) +
+  facet_grid(.row ~ .col) +
+  theme(panel.grid.minor = element_blank()) +
+  xlab(NULL)+ 
+  ylab(NULL)
 
 rescor_plot = m %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
@@ -118,7 +121,9 @@ rescor_plot = m %>%
   xlim(c(-1, 1)) +
   xlab("rescor") +
   ylab(NULL) +
-  facet_grid(.row ~ .col)
+  facet_grid(.row ~ .col) +
+  xlab("correlation") +
+  scale_y_continuous(breaks = NULL) 
 
 data_plot + rescor_plot
 ```
@@ -131,7 +136,7 @@ Some other things possibly worth improving:
 - making "up" be positive correlation and "down" be negative
 - 0 line
 
-```{r, fig.width = 8, fig.height = 4, warning = FALSE, message = FALSE}
+```{r, fig.width = 10, fig.height = 5, warning = FALSE, message = FALSE}
 rescor_plot_heat = m %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
@@ -140,7 +145,7 @@ rescor_plot_heat = m %>%
   geom_vline(xintercept = 0, color = "gray65", linetype = "dashed") +
   stat_pointintervalh() +
   xlim(c(-1, 1)) +
-  xlab("residual correlation") +
+  xlab("correlation") +
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
@@ -175,7 +180,10 @@ data_plot_large = df_large %>%
   gather_pairs(.variable, .value) %>%
   ggplot(aes(.x, .y)) +
   geom_point(size = 1) +
-  facet_grid(.row ~ .col)
+  facet_grid(.row ~ .col) +
+  theme(panel.grid.minor = element_blank()) +
+  xlab(NULL) +
+  ylab(NULL)
 
 data_plot_large
 ```
@@ -186,16 +194,17 @@ m_large = brm(cbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large)
 
 ### Density version
 
-```{r, fig.width = 8, fig.height = 4, warning = FALSE, message = FALSE}
+I've dropped the intervals for this (they start to become illegible) and did a few other minor tweaks for clarity:
+
+```{r, fig.width = 12, fig.height = 6, warning = FALSE, message = FALSE}
 rescor_plot_heat_large = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
   ggplot(aes(x = .value, y = 0)) +
   geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
-  geom_vline(xintercept = 0, color = "gray85") +
-  stat_pointintervalh() +
+  geom_vline(xintercept = 0, color = "white", size = 1) +
   xlim(c(-1, 1)) +
-  xlab("residual correlation") +
+  xlab("correlation") +
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
@@ -212,9 +221,9 @@ You can still pick out the high/low correlations by color, though it isn't quite
 
 A different, more frequency-framing approach, would be to use dithering to show uncertainty (see e.g. Figure 4 from [this paper](http://doi.wiley.com/10.1002/sta4.150)). This is akin to something like an icon array. You should still be able to see the average color (thanks to the human visual system's ensembling processing), but also get a sense of the uncertainty by how "dithered" a square looks:
 
-```{r, fig.width = 9, fig.height = 4}
-w = 40
-h = 40
+```{r, fig.width = 12.75, fig.height = 6}
+w = 60
+h = 60
 
 rescor_plot_heat_dither = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
@@ -229,7 +238,7 @@ rescor_plot_heat_dither = m_large %>%
   ggplot(aes(x, y, fill = .value)) +
   geom_raster() +
   facet_grid(.row ~ .col) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "residual\ncorrelation") +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "corr.") +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
   xlab(NULL) +
@@ -239,3 +248,53 @@ rescor_plot_heat_dither = m_large %>%
 data_plot_large + rescor_plot_heat_dither
 ```
 
+### Densities with heatmaps?
+
+Going back to densities, what if the point estimate is used to set the cell backgorund --- maybe that will help that format have a high-level gist while retaining its more accurate depiction of the uncertainty:
+
+```{r, fig.width = 12, fig.height = 6, warning = FALSE, message = FALSE}
+rescor_plot_heat_large = m_large %>%
+  gather_draws(`rescor.*`, regex = TRUE) %>%
+  separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
+  ggplot(aes(x = .value, y = 0)) +
+  geom_tile(aes(x = 0, y = 0.5, width = 2, height = 1, fill = .value),
+    data = function(df) df %>% group_by(.row, .col) %>% median_qi(.value)) +
+  geom_density_ridges_gradient(aes(height = stat(ndensity), fill = stat(x)), color = NA, scale = 1) +
+  geom_vline(xintercept = 0, color = "white", alpha = .5) +
+  geom_density_ridges(aes(height = stat(ndensity)), fill = NA, color = "gray50", scale = 1) +
+  xlim(c(-1, 1)) +
+  xlab("correlation") +
+  ylab(NULL) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  coord_flip(expand = FALSE) +
+  facet_grid(.row ~ .col)
+
+data_plot_large + rescor_plot_heat_large
+```
+
+This is, admittedly, a bit weird...
+
+## The no-uncertainty heatmap
+
+For reference:
+
+```{r, fig.width = 12, fig.height = 6, warning = FALSE, message = FALSE}
+rescor_plot_heat_large = m_large %>%
+  gather_draws(`rescor.*`, regex = TRUE) %>%
+  separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
+  group_by(.row, .col) %>% 
+  median_qi(.value) %>%
+  ggplot(aes(x = 0, y = 0, fill = .value)) +
+  geom_raster() +
+  xlab("correlation") +
+  ylab(NULL) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  coord_flip(expand = FALSE) +
+  facet_grid(.row ~ .col)
+
+data_plot_large + rescor_plot_heat_large
+```
