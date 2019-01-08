@@ -36,4 +36,9 @@ a stream-of-consciousness style. You have been warned.
     uncertainty), quantile dotplots, and density+interval (“half-eye”)
     plots.
 
+  - [arima](arima.md): visualizations of forecasts for a simple
+    autoregressive time series model. Includes spaghetti plots and HOPs,
+    plus demos the use of not-explicitly-supported packages with
+    `tidybayes` (in this case, `bsts`—Bayesian structural time series).
+
   - [mtcars](mtcars.md): Some spaghetti plots and HOPs with mtcars data
