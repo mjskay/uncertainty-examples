@@ -84,6 +84,33 @@ tibble(
 
 ![](snowfall_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
+Vince Baumel [pointed
+out](https://twitter.com/quantum_relic/status/1095132365800853504) that
+this might look like a pile of snow, so why not push the metaphor with
+color?
+
+``` r
+tibble(
+  p = ppoints(100),
+  snowfall = F_inv(p)
+) %>%
+  ggplot(aes(x = snowfall)) +
+  geom_dotplot(method = "histodot", binwidth = 1, dotsize = .9, stackratio = 1.05, origin = 0, fill = "white", color = NA) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = seq(0, 18, by = 2)) +
+  coord_cartesian(expand = FALSE, xlim = c(0,18)) +
+  xlab("Predicted snowfall in inches. Each dot represents a 1/100\nchance of that level of snowfall.") +
+  ylab(NULL) +
+  theme_tidybayes() +
+  theme(
+    axis.title.x.bottom = element_text(hjust = 0), 
+    axis.line.x.bottom = element_line(color = "gray75"),
+    panel.background = element_rect(fill = "skyblue")
+  )
+```
+
+![](snowfall_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+
 ## HOPs
 
 We could also randomly re-order the quantiles to generate a hypothetical
@@ -110,4 +137,4 @@ anim = tibble(
 animate(anim, fps = 2.5, res = 100, width = 400, height = 200)
 ```
 
-![](snowfall_files/figure-gfm/unnamed-chunk-5-1.gif)<!-- -->
+![](snowfall_files/figure-gfm/unnamed-chunk-6-1.gif)<!-- -->
