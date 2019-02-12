@@ -41,4 +41,7 @@ a stream-of-consciousness style. You have been warned.
     plus demos the use of not-explicitly-supported packages with
     `tidybayes` (in this case, `bsts`—Bayesian structural time series).
 
-  - [mtcars](mtcars.md): Some spaghetti plots and HOPs with mtcars data
+  - [snowfall](snowfall.md): quantile dotplots and HOPs for a snowfall
+    prediction.
+
+  - [mtcars](mtcars.md): Some spaghetti plots and HOPs with mtcars data.

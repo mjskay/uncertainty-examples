@@ -23,4 +23,6 @@ These are typically pretty roughly thrown together, and are in a bit of a stream
 
 - [arima](arima.md): visualizations of forecasts for a simple autoregressive time series model. Includes spaghetti plots and HOPs, plus demos the use of not-explicitly-supported packages with `tidybayes` (in this case, `bsts`---Bayesian structural time series).
 
-- [mtcars](mtcars.md): Some spaghetti plots and HOPs with mtcars data
+- [snowfall](snowfall.md): quantile dotplots and HOPs for a snowfall prediction.
+
+- [mtcars](mtcars.md): Some spaghetti plots and HOPs with mtcars data.
