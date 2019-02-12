@@ -138,3 +138,47 @@ animate(anim, fps = 2.5, res = 100, width = 400, height = 200)
 ```
 
 ![](snowfall_files/figure-gfm/unnamed-chunk-6-1.gif)<!-- -->
+
+Or if we’re getting excessive, here’s the HOPs version as falling
+snowballs:
+
+``` r
+k = 50
+nframes = k * 10
+
+anim = tibble(
+    p = ppoints(k),
+    snowfall = F_inv(p)
+  ) %>%
+  sample_n(k) %>%
+  mutate(
+    id = 1:n(),
+    time = 1:n(),
+    y = list(c(0,1))
+  ) %>%
+  unnest() %>%
+  mutate(
+    time = time + y
+  ) %>%
+  ggplot(aes(x = snowfall, y = 1 - y, group = id)) +
+  geom_point(size = 2, color = "white") +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = seq(0, 18, by = 2)) +
+  coord_cartesian(expand = FALSE, xlim = c(0,18)) +
+  xlab("Predicted snowfall in inches. Each snowball is an\napproximately equally likely predicted outcome.") +
+  ylab(NULL) +
+  theme_tidybayes() +
+  theme(
+    axis.title.x.bottom = element_text(hjust = 0), 
+    axis.line.x.bottom = element_line(color = "gray75"),
+    panel.background = element_rect(fill = "skyblue")
+  ) +
+  transition_components(time = time, exit_length = .5) +
+  ease_aes("quadratic-in") +
+  exit_fade() +
+  shadow_wake(wake_length = 0.25/k)
+
+animate(anim, nframes = nframes, fps = nframes / k * 2.5, res = 100, width = 400, height = 200)
+```
+
+![](snowfall_files/figure-gfm/unnamed-chunk-7-1.gif)<!-- -->
