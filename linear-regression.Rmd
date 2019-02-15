@@ -16,10 +16,15 @@ library(magrittr)
 library(ggplot2)
 library(rstanarm)
 library(modelr)
-library(tidybayes)            # install from github
-library(gganimate)            # install from github
+library(tidybayes)
+library(gganimate)
+library(colorspace)
+library(cowplot)
 
-theme_set(theme_light())
+theme_set(
+  theme_tidybayes() +
+  panel_border()
+)
 ```
 
 
@@ -33,7 +38,7 @@ set.seed(123)
 sample_size = 60
 a = 1
 b = 2
-sigma = 2
+sigma = 3
 
 
 df = data_frame(
@@ -52,9 +57,17 @@ df %>%
   geom_point() 
 ```
 
-```{r}
+```{r, results = "hide"}
 m = stan_glm(y ~ x, data = df)
 ```
+
+```{r}
+df %>%
+  data_grid(x = seq_range(x, n = 100)) %>%
+  add_fitted_draws(m) %>%
+  median_qi()
+```
+
 
 ### Visualizations
 
@@ -74,22 +87,13 @@ m %>%
   gather_draws(`(Intercept)`, x, sigma) %>%
   do(data.frame(.value = quantile(.$.value, ppoints(100)))) %>%
   ggplot(aes(x = .value)) +
-  geom_dotplot(binwidth = 0.04) +
-  facet_grid(.variable ~ .)
+  geom_dotplot(binwidth = 0.07) +
+  facet_grid(.variable ~ .) +
+  ylab("") +
+  scale_y_continuous(breaks = NULL)
 ```
 
 #### HOPs of coefficients
-
-```{r fig.width = 5, fig.height = 5}
-m %>%
-  gather_draws(`(Intercept)`, x, sigma) %>%
-  filter(.draw %in% floor(seq_range(.draw, n = 100))) %>%
-  ggplot(aes(x = .value, y = .variable)) +
-  geom_point() +
-  transition_manual(.draw)
-```
-
-Controlling framerate:
 
 ```{r fig.width = 5, fig.height = 5}
 p = m %>%
@@ -99,7 +103,7 @@ p = m %>%
   geom_point() +
   transition_manual(.draw)
 
-animate(p, fps = 5)
+animate(p, fps = 2.5, res = 100, width = 500, height = 500)
 ```
 
 #### Fit lines with uncertainty bands
@@ -118,36 +122,22 @@ df %>%
 df %>%
   add_fitted_draws(m, n = 100) %>%
   ggplot(aes(x = x, y = .value)) +
-  geom_line(aes(group = .draw), alpha = 0.1, color = "red") +
+  geom_line(aes(group = .draw), alpha = 1/20, color = "red") +
   geom_point(aes(y = y), data = df)
 ```
 
 #### Regression lines as animated HOPs
 
-Basic example:
-
-```{r fig.width = 5, fig.height = 5}
-df %>%
-  add_fitted_draws(m, n = 100) %>%
-  ggplot(aes(x = x, y = .value)) +
-  geom_line(color = "red") +
-  geom_point(aes(y = y), data = df) +
-  transition_manual(.draw)
-```
-
-Showing how to control speed:
-
 ```{r fig.width = 5, fig.height = 5}
 p = df %>%
   add_fitted_draws(m, n = 100) %>%
   ggplot(aes(x = x, y = .value)) +
-  geom_line(color = "red") +
+  geom_line(color = "#3573b9", size = 1) +
   geom_point(aes(y = y), data = df) +
   transition_manual(.draw)
 
-animate(p, fps = 5)
+animate(p, fps = 2.5, res = 100, width = 500, height = 500)
 ```
-
 
 
 #### Posterior predictions with uncertainty bands
@@ -155,8 +145,8 @@ animate(p, fps = 5)
 ```{r fig.width = 5.5, fig.height = 5}
 df %>%
   add_predicted_draws(m) %>%
-  ggplot(aes(x = x, y = .prediction)) +
-  stat_lineribbon() +
-  scale_fill_brewer() +
-  geom_point(aes(y = y), data = df)
+  ggplot(aes(x = x, y = y)) +
+  stat_lineribbon(aes(y = .prediction), color = "black") +
+  geom_point(data = df) +
+  scale_fill_discrete_sequential(palette = "Blues", nmax = 5, order = 2:4) 
 ```
