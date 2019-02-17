@@ -59,11 +59,13 @@ y_axis = list(
   coord_cartesian(ylim = c(0, .11), expand = FALSE),
   scale_y_continuous(labels = scales::percent)
 )
+title = labs(x = NULL, y = NULL, subtitle = "US unemployment over time")
 
 df %>%
   ggplot(aes(x = date, y = unemployment)) +
   geom_line() +
-  y_axis
+  y_axis +
+  title 
 ```
 
 ![](us-unemployment_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
@@ -83,25 +85,25 @@ m = with(df, bsts(logit_unemployment, state.specification = list() %>%
   niter = 10000))
 ```
 
-    ## =-=-=-=-= Iteration 0 Sat Feb 16 18:51:30 2019
+    ## =-=-=-=-= Iteration 0 Sat Feb 16 21:35:26 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 1000 Sat Feb 16 18:51:39 2019
+    ## =-=-=-=-= Iteration 1000 Sat Feb 16 21:35:35 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 2000 Sat Feb 16 18:51:47 2019
+    ## =-=-=-=-= Iteration 2000 Sat Feb 16 21:35:43 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 3000 Sat Feb 16 18:51:56 2019
+    ## =-=-=-=-= Iteration 3000 Sat Feb 16 21:35:53 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 4000 Sat Feb 16 18:52:05 2019
+    ## =-=-=-=-= Iteration 4000 Sat Feb 16 21:36:02 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 5000 Sat Feb 16 18:52:13 2019
+    ## =-=-=-=-= Iteration 5000 Sat Feb 16 21:36:11 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 6000 Sat Feb 16 18:52:22 2019
+    ## =-=-=-=-= Iteration 6000 Sat Feb 16 21:36:20 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 7000 Sat Feb 16 18:52:30 2019
+    ## =-=-=-=-= Iteration 7000 Sat Feb 16 21:36:28 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 8000 Sat Feb 16 18:52:39 2019
+    ## =-=-=-=-= Iteration 8000 Sat Feb 16 21:36:37 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 9000 Sat Feb 16 18:52:47 2019
+    ## =-=-=-=-= Iteration 9000 Sat Feb 16 21:36:46 2019
     ##  =-=-=-=-=
 
 ## Spaghetti plot
@@ -140,7 +142,8 @@ df %>%
   geom_line(aes(y = .value, group = .draw), alpha = 1/20, data = fits %>% sample_draws(100)) +
   geom_line(aes(y = .prediction, group = .draw), alpha = 1/20, data = predictions %>% sample_draws(100)) +
   geom_point() +
-  y_axis
+  y_axis +
+  title
 ```
 
 ![](us-unemployment_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
@@ -154,6 +157,23 @@ fit_color = "#3573b9"
 prediction_color = "#e41a1c"
 
 x_axis = scale_x_date(date_breaks = "1 years", labels = year)
+arrow_spec = arrow(length = unit(6, "points"), type = "closed")
+fit_annotation = list(
+  annotate("text", x = ymd("2014-04-08"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
+    label = 'Uncertainty in what\nunemployment'),
+  annotate("text", x = ymd("2014-04-08"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
+    label = '\n                         was', color = fit_color, fontface = "bold"),
+  annotate("segment", x = ymd("2015-03-01"), xend = ymd("2015-03-01"), y = .087, yend = .06, linejoin = "mitre",
+    color = fit_color, size = 1, arrow = arrow_spec)
+)
+prediction_annotation = list(
+  annotate("text", x = ymd("2017-12-06"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
+    label = 'Uncertainty in what \nunemployment'),
+  annotate("text", x = ymd("2017-12-06"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
+    label = '\n                         will be', color = prediction_color, fontface = "bold"),
+  annotate("segment", x = ymd("2019-02-01"), xend = ymd("2019-02-01"), y = .087, yend = .053, linejoin = "mitre",
+    color = prediction_color, size = 1, arrow = arrow_spec)
+)
 
 df %>%
   filter(year(date) >= since_year) %>%
@@ -163,15 +183,40 @@ df %>%
   geom_line(aes(y = .prediction, group = .draw), alpha = 1/20, color = prediction_color, size = .75,
     data = predictions %>% sample_draws(100)) +
   geom_point(size = 0.75) +
+  fit_annotation +
+  prediction_annotation +
   y_axis +
-  x_axis
+  x_axis +
+  title
 ```
 
 ![](us-unemployment_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
 ## Uncertainty bands
 
-We could instead use predictive bands:
+We could instead use a predictive band:
+
+``` r
+df %>%
+  filter(year(date) >= since_year) %>%
+  ggplot(aes(x = date, y = unemployment)) +
+  stat_lineribbon(aes(y = .value), fill = adjustcolor(fit_color, alpha.f = .25), color = fit_color, .width = .95,
+    data = fits %>% filter(year(date) >= since_year)) +
+  stat_lineribbon(aes(y = .prediction), fill = adjustcolor(prediction_color, alpha.f = .25), color = prediction_color, .width = .95,
+    data = predictions) +
+  geom_point(size = 0.75) +
+  fit_annotation +
+  prediction_annotation +
+  y_axis +
+  x_axis +
+  title
+```
+
+![](us-unemployment_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+
+But that loses a lot of nuance and fixes the reader to whatever
+arbitrary interval the visualization designer chose to display. One
+alternative would be to show many intervals:
 
 ``` r
 df %>%
@@ -180,11 +225,14 @@ df %>%
   stat_lineribbon(aes(y = .value), fill = fit_color, color = fit_color, alpha = 1/5, data = fits %>% filter(year(date) >= since_year)) +
   stat_lineribbon(aes(y = .prediction), fill = prediction_color, color = prediction_color, alpha = 1/5, data = predictions) +
   geom_point(size = 0.75) +
+  fit_annotation +
+  prediction_annotation +
   y_axis +
-  x_axis
+  x_axis +
+  title
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
 
 ## Gradient plot
 
@@ -201,11 +249,14 @@ df %>%
   stat_lineribbon(aes(y = .prediction), fill = prediction_color, alpha = 1/n_bands, .width = ppoints(n_bands),
     data = predictions, color = NA) +
   geom_point(size = 0.75) +
+  fit_annotation +
+  prediction_annotation +
   y_axis +
-  x_axis
+  x_axis +
+  title
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
 ## Density plot
 
@@ -217,7 +268,8 @@ fit_plot = df %>%
   geom_point(size = 0.75) +
   y_axis +
   x_axis +
-  expand_limits(x = ymd("2019-03-01"))
+  expand_limits(x = ymd("2019-03-01")) +
+  title
 
 predict_plot = predictions %>%
   filter(date %in% c(ymd("2019-02-01"), ymd("2019-08-01"), ymd("2020-02-01"))) %>%
@@ -238,7 +290,7 @@ plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(4, 1),
   )
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
 
 Can’t decide if I prefer the density normalized within predicted month
 or not:
@@ -263,7 +315,7 @@ plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(4, 1),
   )
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
 ## Quantile dotplot
 
@@ -284,12 +336,18 @@ predict_plot = predictions %>%
   theme(strip.text.x = element_text(hjust = 0, size = 8))
 
 plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(4, 1),
-  fit_plot,
-  predict_plot
-  )
+    fit_plot,
+    predict_plot
+  ) +
+  draw_grob(grid::rectGrob(gp = grid::gpar(fill = "white", col = NA)), x = .8, y = .75, width = .2, height = .2) +
+  draw_label(x = 0.8, y = .9, hjust = 0, vjust = 1, size = 11, lineheight = 1.1,
+    label = "50 equally likely predictions\nfor what unemployment\nin Feb 2019") +
+  draw_label(x = 0.8, y = .9, hjust = 0, vjust = 1, size = 11, lineheight = 1.1,
+    label = "\n\n                    will be", colour = prediction_color, fontface = "bold") +
+  draw_line(x = c(0.82, 0.82), y = c(.76, .48), size = 1, colour = prediction_color, linejoin = "mitre", arrow = arrow_spec)
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
 ## HOPs
 
@@ -305,14 +363,16 @@ anim = df %>%
     data = predictions_with_last_obs %>% sample_draws(n_hops)) +
   geom_line(color = "gray75") +
   geom_point(size = 0.75) +
+  prediction_annotation +
   y_axis +
   x_axis +
+  title +
   transition_states(.draw, 0, 1) 
 
 animate(anim, nframes = n_frames, fps = n_frames / n_hops * 2.5, res = 100, width = 900, height = 450, type = "cairo")
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-13-1.gif)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-15-1.gif)<!-- -->
 
 Or HOPs with static ensemble in the background:
 
@@ -323,4 +383,4 @@ anim = anim +
 animate(anim, nframes = n_frames, fps = n_frames / n_hops * 2.5, res = 100, width = 900, height = 450, type = "cairo")
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-14-1.gif)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-16-1.gif)<!-- -->
