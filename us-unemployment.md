@@ -1,6 +1,18 @@
 Uncertainty examples with US unemployment data
 ================
 
+  - [Introduction](#introduction)
+  - [Setup](#setup)
+  - [Data](#data)
+  - [Model](#model)
+  - [Spaghetti plot](#spaghetti-plot)
+  - [Uncertainty bands](#uncertainty-bands)
+  - [Gradient plot](#gradient-plot)
+  - [Density plot](#density-plot)
+  - [Last point predictions](#last-point-predictions)
+  - [Quantile dotplot](#quantile-dotplot)
+  - [HOPs](#hops)
+
 ## Introduction
 
 This example shows some examples of uncertainty visualization with US
@@ -19,6 +31,7 @@ library(bsts)
 library(gganimate)
 library(cowplot)
 library(lubridate)
+library(ggridges)
 
 theme_set(
   theme_tidybayes()
@@ -30,7 +43,8 @@ options(mc.cores = 1)#parallel::detectCores())
 knitr::opts_chunk$set(
   fig.width = 9,
   fig.height = 4.5,
-  dev.args = list(type = "cairo")
+  dpi = 200,
+  dev.args = list(png = list(type = "cairo"))
 )
 ```
 
@@ -56,8 +70,9 @@ Which looks like this:
 ``` r
 y_max = .11
 y_axis = list(
-  coord_cartesian(ylim = c(0, .11), expand = FALSE),
-  scale_y_continuous(labels = scales::percent)
+  coord_cartesian(ylim = c(0, y_max), expand = FALSE),
+  scale_y_continuous(labels = scales::percent),
+  theme(axis.text.y = element_text(vjust = 0.05))
 )
 title = labs(x = NULL, y = NULL, subtitle = "US unemployment over time")
 
@@ -85,25 +100,25 @@ m = with(df, bsts(logit_unemployment, state.specification = list() %>%
   niter = 10000))
 ```
 
-    ## =-=-=-=-= Iteration 0 Sat Feb 16 21:35:26 2019
+    ## =-=-=-=-= Iteration 0 Fri May 17 22:43:56 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 1000 Sat Feb 16 21:35:35 2019
+    ## =-=-=-=-= Iteration 1000 Fri May 17 22:44:06 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 2000 Sat Feb 16 21:35:43 2019
+    ## =-=-=-=-= Iteration 2000 Fri May 17 22:44:16 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 3000 Sat Feb 16 21:35:53 2019
+    ## =-=-=-=-= Iteration 3000 Fri May 17 22:44:28 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 4000 Sat Feb 16 21:36:02 2019
+    ## =-=-=-=-= Iteration 4000 Fri May 17 22:44:40 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 5000 Sat Feb 16 21:36:11 2019
+    ## =-=-=-=-= Iteration 5000 Fri May 17 22:44:53 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 6000 Sat Feb 16 21:36:20 2019
+    ## =-=-=-=-= Iteration 6000 Fri May 17 22:45:02 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 7000 Sat Feb 16 21:36:28 2019
+    ## =-=-=-=-= Iteration 7000 Fri May 17 22:45:14 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 8000 Sat Feb 16 21:36:37 2019
+    ## =-=-=-=-= Iteration 8000 Fri May 17 22:45:24 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 9000 Sat Feb 16 21:36:46 2019
+    ## =-=-=-=-= Iteration 9000 Fri May 17 22:45:34 2019
     ##  =-=-=-=-=
 
 ## Spaghetti plot
@@ -156,7 +171,10 @@ set.seed(123456)
 fit_color = "#3573b9"
 prediction_color = "#e41a1c"
 
-x_axis = scale_x_date(date_breaks = "1 years", labels = year)
+x_axis = list(
+  scale_x_date(date_breaks = "1 years", labels = year),
+  theme(axis.text.x = element_text(hjust = 0.1))
+)
 arrow_spec = arrow(length = unit(6, "points"), type = "closed")
 fit_annotation = list(
   annotate("text", x = ymd("2014-04-08"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
@@ -167,11 +185,11 @@ fit_annotation = list(
     color = fit_color, size = 1, arrow = arrow_spec)
 )
 prediction_annotation = list(
-  annotate("text", x = ymd("2017-12-06"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
+  annotate("text", x = ymd("2018-02-16"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
     label = 'Uncertainty in what \nunemployment'),
-  annotate("text", x = ymd("2017-12-06"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
+  annotate("text", x = ymd("2018-02-16"), y = .09, hjust = 0, vjust = 0, lineheight = 1.1,
     label = '\n                         will be', color = prediction_color, fontface = "bold"),
-  annotate("segment", x = ymd("2019-02-01"), xend = ymd("2019-02-01"), y = .087, yend = .053, linejoin = "mitre",
+  annotate("segment", x = ymd("2019-05-01"), xend = ymd("2019-05-01"), y = .087, yend = .053, linejoin = "mitre",
     color = prediction_color, size = 1, arrow = arrow_spec)
 )
 
@@ -219,7 +237,7 @@ arbitrary interval the visualization designer chose to display. One
 alternative would be to show many intervals:
 
 ``` r
-df %>%
+p = df %>%
   filter(year(date) >= since_year) %>%
   ggplot(aes(x = date, y = unemployment)) +
   stat_lineribbon(aes(y = .value), fill = fit_color, color = fit_color, alpha = 1/5, data = fits %>% filter(year(date) >= since_year)) +
@@ -230,6 +248,8 @@ df %>%
   y_axis +
   x_axis +
   title
+
+p
 ```
 
 ![](us-unemployment_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
@@ -268,13 +288,24 @@ fit_plot = df %>%
   geom_point(size = 0.75) +
   y_axis +
   x_axis +
-  expand_limits(x = ymd("2019-03-01")) +
+  expand_limits(x = ymd("2019-06-01")) +
   title
 
-predict_plot = predictions %>%
-  filter(date %in% c(ymd("2019-02-01"), ymd("2019-08-01"), ymd("2020-02-01"))) %>%
+facet_x_labels = list(
+  geom_vline(xintercept = 0, color = "gray75"),
+  theme(
+    strip.text.x = element_text(hjust = 0, size = 7.5, margin = margin(3, 1, 5, 1)),
+    panel.spacing.x = unit(3, "points"),
+    axis.text.y = element_text(vjust = 0.05),
+    strip.background = element_blank(),
+    plot.margin = margin(0, 3, 0, 0)
+  )
+)
+
+predict_plot_equalarea = predictions %>%
+  filter(date %in% c(ymd("2019-05-01"), ymd("2019-11-01"), ymd("2020-05-01"))) %>%
   ggplot(aes(x = .prediction)) +
-  geom_hline(yintercept = 0, color = "gray90") +
+  geom_hline(yintercept = 0, color = "gray85", linetype = "dashed") +
   stat_density(fill = prediction_color, adjust = 2, alpha = 3/5) +
   ylab(NULL) +
   xlab(NULL) +
@@ -282,50 +313,161 @@ predict_plot = predictions %>%
   scale_x_continuous(breaks = NULL) +
   coord_flip(xlim = c(0, y_max), expand = FALSE) +
   facet_grid(. ~ date, labeller = labeller(date = function(x) strftime(x, "%b\n%Y")), switch = "x") +
-  theme(strip.text.x = element_text(hjust = 0, size = 8))
+  facet_x_labels
 
-plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(4, 1),
+plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(5, 1),
   fit_plot,
-  predict_plot
+  predict_plot_equalarea
   )
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
 Can’t decide if I prefer the density normalized within predicted month
 or not:
 
 ``` r
-predict_plot = predictions %>%
-  filter(date %in% c(ymd("2019-02-01"), ymd("2019-08-01"), ymd("2020-02-01"))) %>%
-  ggplot(aes(x = .prediction)) +
-  geom_hline(yintercept = 0, color = "gray90") +
-  stat_density(fill = prediction_color, adjust = 2, alpha = 3/5) +
+predict_plot = predict_plot_equalarea +
+  facet_grid(. ~ date, labeller = labeller(date = function(x) strftime(x, "%b\n%Y")), switch = "x", scale = "free_x")
+
+plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(5, 1),
+  fit_plot,
+  predict_plot
+  )
+```
+
+![](us-unemployment_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+
+Another alternative would be to show an estimate / prediction every 6
+months as a density plot:
+
+``` r
+fit_density_plot = fits %>%
+  filter(date %in% (ymd("2007-11-01") + months(seq(0, 22*6, by = 6)))) %>%
+  ggplot(aes(x = .value)) +
+  geom_hline(yintercept = 0, color = "gray85", linetype = "dashed") +
+  stat_density(fill = fit_color, adjust = 2, alpha = 3/5) +
+  ylab(NULL) +
+  xlab(NULL) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(labels = scales::percent) +
+  coord_flip(xlim = c(0, y_max), expand = FALSE) +
+  facet_grid(. ~ date, labeller = labeller(date = function(x) strftime(x, "%b\n%Y")), switch = "x", scale = "free_x") +
+  facet_x_labels
+
+plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(7.25, 1),
+  fit_density_plot,
+  predict_plot
+  )
+```
+
+![](us-unemployment_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+
+Here’s basically the same thing, but using `geom_density_ridges`:
+
+``` r
+fits %>%
+  filter(date %in% (ymd("2007-11-01") + months(seq(0, 22*6, by = 6)))) %>%
+  mutate(type = "fit") %>%
+  bind_rows(
+    predictions %>%
+      filter(date %in% c(ymd("2019-05-01"), ymd("2019-11-01"), ymd("2020-05-01"))) %>%
+      mutate(.value = .prediction, type = "prediction")
+  ) %>%
+  ggplot(aes(y = ordered(date), x = .value, fill = type)) +
+  geom_density_ridges(aes(height = stat(ndensity)), alpha = 3/5, color = NA, bandwidth = 0.0006, scale = .95) +
+  scale_y_discrete(labels = function(x) strftime(x, "%b\n%Y")) +
+  scale_fill_manual(values = c(fit_color, prediction_color), guide = FALSE) +
+  coord_flip(xlim = c(0, y_max), expand = FALSE) +
+  theme(axis.text.x = element_text(hjust = 0))
+```
+
+![](us-unemployment_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
+
+## Last point predictions
+
+``` r
+fit_plot +
+  geom_point(data = . %>% slice(n()), size = 1.75) +
+  geom_text(aes(label = paste0("  ", unemployment * 100, "%")), data = . %>% slice(n()), 
+    hjust = 0, vjust = .4, size = 3.5, fontface = "bold") +
+  expand_limits(x = ymd("2019-11-01"))
+```
+
+![](us-unemployment_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
+
+``` r
+last_fit = fits %>% 
+  ungroup() %>% 
+  filter(date == max(date))
+
+last_fit_plot = last_fit %>%
+  ggplot(aes(x = .value)) +
+  geom_hline(yintercept = 0, color = "gray85", linetype = "dashed") +
+  stat_density(fill = fit_color, adjust = 2, alpha = 3/5) +
   ylab(NULL) +
   xlab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
   coord_flip(xlim = c(0, y_max), expand = FALSE) +
   facet_grid(. ~ date, labeller = labeller(date = function(x) strftime(x, "%b\n%Y")), switch = "x", scale = "free_x") +
-  theme(strip.text.x = element_text(hjust = 0, size = 8))
+  facet_x_labels
 
-plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(4, 1),
+plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(7.25, .5),
   fit_plot,
-  predict_plot
+  last_fit_plot
   )
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->
+
+``` r
+last_fit %>% 
+  ggplot(aes(x = .value)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  stat_density(fill = fit_color, adjust = 2, alpha = 3/5) +
+  ylab(NULL) +
+  xlab(NULL) +
+  labs(subtitle = paste0("Uncertainty in what US unemployment was in ", strftime(last_fit$date[[1]], "%b %Y"))) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = .1)) +
+  coord_cartesian(xlim = c(0, .052), expand = FALSE) +
+  theme(strip.text.x = element_text(hjust = 0, size = 8)) +
+  theme(axis.text.x = element_text(hjust = 0.1))
+```
+
+![](us-unemployment_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
+
+``` r
+first_prediction = predictions %>%
+  ungroup() %>%
+  filter(date == min(date))
+
+first_prediction %>% 
+  ggplot(aes(x = .prediction)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  stat_density(fill = prediction_color, adjust = 2, alpha = 3/5) +
+  ylab(NULL) +
+  xlab(NULL) +
+  labs(subtitle = paste0("Uncertainty in what US unemployment will be in ", strftime(first_prediction$date[[1]], "%b %Y"))) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = .1)) +
+  coord_cartesian(xlim = c(0, .052), expand = FALSE) +
+  theme(strip.text.x = element_text(hjust = 0, size = 8)) +
+  theme(axis.text.x = element_text(hjust = 0.1))
+```
+
+![](us-unemployment_files/figure-gfm/unnamed-chunk-21-1.png)<!-- -->
 
 ## Quantile dotplot
 
 ``` r
 predict_plot = predictions %>%
-  filter(date %in% c(ymd("2019-02-01"), ymd("2019-08-01"), ymd("2020-02-01"))) %>%
+  filter(date %in% c(ymd("2019-05-01"), ymd("2019-11-01"), ymd("2020-05-01"))) %>%
   group_by(date) %>%
   do(tibble(.prediction = quantile(.$.prediction, ppoints(50)))) %>%
   ggplot(aes(x = .prediction)) +
-  geom_hline(yintercept = 0, color = "gray90") +
+  geom_hline(yintercept = 0, color = "gray85", linetype = "dashed") +
   geom_dotplot(fill = prediction_color, color = NA, binwidth = .001, alpha = 3/5, dotsize = 1.1) +
   ylab(NULL) +
   xlab(NULL) +
@@ -333,7 +475,7 @@ predict_plot = predictions %>%
   scale_x_continuous(breaks = NULL) +
   coord_flip(xlim = c(0, y_max), expand = FALSE) +
   facet_grid(. ~ date, labeller = labeller(date = function(x) strftime(x, "%b\n%Y")), switch = "x", scales = "free_x") +
-  theme(strip.text.x = element_text(hjust = 0, size = 8))
+  facet_x_labels
 
 plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(4, 1),
     fit_plot,
@@ -341,19 +483,19 @@ plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(4, 1),
   ) +
   draw_grob(grid::rectGrob(gp = grid::gpar(fill = "white", col = NA)), x = .8, y = .75, width = .2, height = .2) +
   draw_label(x = 0.8, y = .9, hjust = 0, vjust = 1, size = 11, lineheight = 1.1,
-    label = "50 equally likely predictions\nfor what unemployment\nin Feb 2019") +
+    label = "50 equally likely predictions\nfor what unemployment\nin May 2019") +
   draw_label(x = 0.8, y = .9, hjust = 0, vjust = 1, size = 11, lineheight = 1.1,
     label = "\n\n                    will be", colour = prediction_color, fontface = "bold") +
   draw_line(x = c(0.82, 0.82), y = c(.76, .48), size = 1, colour = prediction_color, linejoin = "mitre", arrow = arrow_spec)
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
 
 ## HOPs
 
 ``` r
 n_hops = 100
-n_frames = 100
+n_frames = n_hops
 set.seed(123456)
 
 anim = df %>%
@@ -367,20 +509,35 @@ anim = df %>%
   y_axis +
   x_axis +
   title +
-  transition_states(.draw, 0, 1) 
+  transition_manual(.draw) 
 
 animate(anim, nframes = n_frames, fps = n_frames / n_hops * 2.5, res = 100, width = 900, height = 450, type = "cairo")
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-15-1.gif)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-24-1.gif)<!-- -->
 
 Or HOPs with static ensemble in the background:
 
 ``` r
-anim = anim +
-  shadow_mark(past = TRUE, future = TRUE, color = "black", alpha = 1/50)
+predictions_with_last_obs_draws = predictions_with_last_obs %>% 
+  sample_draws(n_hops)
+
+anim = df %>%
+  filter(year(date) >= since_year) %>%
+  ggplot(aes(x = date, y = unemployment)) +
+  geom_line(aes(y = .prediction, group = .group), color = "black", alpha = 1/50, size = .75,
+    data = rename(predictions_with_last_obs_draws, .group = .draw)) +
+  geom_line(aes(y = .prediction, group = .draw), color = prediction_color, size = .75, 
+    data = predictions_with_last_obs_draws) +
+  geom_line(color = "gray75") +
+  geom_point(size = 0.75) +
+  prediction_annotation +
+  y_axis +
+  x_axis +
+  title +
+  transition_manual(.draw) 
 
 animate(anim, nframes = n_frames, fps = n_frames / n_hops * 2.5, res = 100, width = 900, height = 450, type = "cairo")
 ```
 
-![](us-unemployment_files/figure-gfm/unnamed-chunk-16-1.gif)<!-- -->
+![](us-unemployment_files/figure-gfm/unnamed-chunk-25-1.gif)<!-- -->
