@@ -1,6 +1,23 @@
 Multivariate regression
 ================
 
+  - [Setup](#setup)
+      - [Data](#data)
+      - [Data plot](#data-plot)
+      - [Model](#model)
+      - [Correlations from the model](#correlations-from-the-model)
+      - [Altogether](#altogether)
+      - [Or side-by-side](#or-side-by-side)
+      - [More heatmap-y](#more-heatmap-y)
+  - [Okay, but does it scale?](#okay-but-does-it-scale)
+      - [Density version](#density-version)
+      - [Dither approach](#dither-approach)
+      - [Densities with heatmaps?](#densities-with-heatmaps)
+  - [The no-uncertainty heatmap](#the-no-uncertainty-heatmap)
+  - [Posterior predictions](#posterior-predictions)
+  - [The directly-in-Stan model](#the-directly-in-stan-model)
+      - [Posterior predictions](#posterior-predictions-1)
+
 ## Setup
 
 Libraries that might be of help:
@@ -14,6 +31,7 @@ library(brms)
 library(modelr)
 library(tidybayes)
 library(ggridges)
+library(colorspace)
 library(patchwork)  # devtools::install_github("thomasp85/patchwork")
 
 theme_set(theme_light())
@@ -26,7 +44,7 @@ options(mc.cores = parallel::detectCores())
 ``` r
 set.seed(1234)
 
-df =  data_frame(
+df =  tibble(
   y1 = rnorm(20),
   y2 = rnorm(20, y1),
   y3 = rnorm(20, -y1)
@@ -49,7 +67,7 @@ df %>%
 ### Model
 
 ``` r
-m = brm(cbind(y1, y2, y3) ~ 1, data = df)
+m = brm(mvbind(y1, y2, y3) ~ 0 + intercept, data = df)
 ```
 
     ## Setting 'rescor' to TRUE by default for this model
@@ -97,7 +115,7 @@ df %>%
   geom_point() +
 
   # correlations
-  geom_halfeyeh(aes(x = .value, y = 0), data = correlations) +
+  geom_halfeyeh(aes(x = .value, y = 0), data = correlations, size = .75) +
   geom_vline(aes(xintercept = x), data = correlations %>% data_grid(nesting(.row, .col), x = c(-1, 0, 1))) +
 
   facet_grid(.row ~ .col)
@@ -164,7 +182,9 @@ rescor_plot_heat = m %>%
   xlab("correlation") +
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
+  #scale_fill_continuous_diverging(palette = "Blue-Yellow 2", limits = c(-1, 1), guide = FALSE) +
+  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
   coord_flip() +
   facet_grid(.row ~ .col)
 
@@ -180,7 +200,7 @@ Let’s add some more variables…
 ``` r
 set.seed(1234)
 
-df_large =  data_frame(
+df_large =  tibble(
   y1 = rnorm(20),
   y2 = rnorm(20, y1),
   y3 = rnorm(20, -y1),
@@ -197,7 +217,7 @@ data_plot_large = df_large %>%
   gather(.variable, .value) %>%
   gather_pairs(.variable, .value) %>%
   ggplot(aes(.x, .y)) +
-  geom_point(size = 1) +
+  geom_point(size = .5) +
   facet_grid(.row ~ .col) +
   theme(panel.grid.minor = element_blank()) +
   xlab(NULL) +
@@ -209,7 +229,7 @@ data_plot_large
 ![](multivariate-regression_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
 
 ``` r
-m_large = brm(cbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large)
+m_large = brm(mvbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large)
 ```
 
     ## Setting 'rescor' to TRUE by default for this model
@@ -235,7 +255,8 @@ rescor_plot_heat_large = m_large %>%
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
+  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
   coord_flip() +
   facet_grid(.row ~ .col)
 
@@ -274,7 +295,9 @@ rescor_plot_heat_dither = m_large %>%
   ggplot(aes(x, y, fill = .value)) +
   geom_raster() +
   facet_grid(.row ~ .col) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "corr.") +
+  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
+  #scale_fill_continuous_diverging(palette = "Blue-Yellow 2", limits = c(-1, 1), guide = FALSE) +
+  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "corr.") +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
   xlab(NULL) +
@@ -342,3 +365,206 @@ data_plot_large + rescor_plot_heat_large
 ```
 
 ![](multivariate-regression_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+
+## Posterior predictions
+
+Let’s look at some posterior predictions as well:
+
+``` r
+data.frame(x = 0) %>%
+  add_predicted_draws(m_large) %>%
+  ungroup() %>%
+  select(-.row) %>%
+  gather_pairs(.category, .prediction) %>%
+  ggplot(aes(x = .x, y = .y)) +
+  stat_density_2d(alpha = 1/15, fill = "#08519C", geom = "polygon") +
+  geom_point(data = df_large %>% gather_variables() %>% gather_pairs(.variable, .value), size = .5, pch = 20) +
+  scale_fill_distiller(direction = 1, guide = FALSE) +
+  facet_grid(.row ~ .col)
+```
+
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+
+## The directly-in-Stan model
+
+To demo some other useful `tidybayes` features, particularly on nested
+data, let’s code up a version of the multivariate regression model
+directly in Stan that expects the outcome variable `Y` to be a vector:
+
+``` stan
+data {
+  int<lower=1> n;            // number of observations
+  int<lower=1> n_responses;  // number of response variables
+  vector[n_responses] Y[n];  // response matrix
+}
+parameters {
+  vector[n_responses] Mu;
+  vector<lower=0>[n_responses] sigma;
+  // parameters for multivariate linear models
+  cholesky_factor_corr[n_responses] Lrescor;
+}
+transformed parameters {
+  matrix[n_responses, n_responses] LSigma = diag_pre_multiply(sigma, Lrescor);
+}
+model {
+  // priors
+  sigma ~ student_t(3, 0, 10);
+  Mu ~ normal(0, 10);
+  Lrescor ~ lkj_corr_cholesky(1);
+  
+  // likelihood
+  Y ~ multi_normal_cholesky(Mu, LSigma);
+} 
+generated quantities {
+  matrix[n_responses, n_responses] Sigma = multiply_lower_tri_self_transpose(LSigma);
+}
+```
+
+We’ll use a modified version of the dataset that has the data nested
+into a `Y` variable as well:
+
+``` r
+nested_df = df %>%
+  transmute(Y = pmap(list(y1, y2, y3), c))
+
+nested_df
+```
+
+    ## # A tibble: 20 x 1
+    ##    Y        
+    ##    <list>   
+    ##  1 <dbl [3]>
+    ##  2 <dbl [3]>
+    ##  3 <dbl [3]>
+    ##  4 <dbl [3]>
+    ##  5 <dbl [3]>
+    ##  6 <dbl [3]>
+    ##  7 <dbl [3]>
+    ##  8 <dbl [3]>
+    ##  9 <dbl [3]>
+    ## 10 <dbl [3]>
+    ## 11 <dbl [3]>
+    ## 12 <dbl [3]>
+    ## 13 <dbl [3]>
+    ## 14 <dbl [3]>
+    ## 15 <dbl [3]>
+    ## 16 <dbl [3]>
+    ## 17 <dbl [3]>
+    ## 18 <dbl [3]>
+    ## 19 <dbl [3]>
+    ## 20 <dbl [3]>
+
+We’ll also keep the long-form paired version of the dataset around since
+it will be useful for plotting:
+
+``` r
+paired_df = df %>%
+  gather(.variable, .value) %>%
+  gather_pairs(.variable, .value) 
+
+paired_df %>%
+  ggplot(aes(.x, .y)) +
+  geom_point() +
+  facet_grid(.row ~ .col)
+```
+
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
+
+To prepare the data for modeling, we can use `compose_data()`, which
+will appropriately handle the nested `Y` column for us, generate the `n`
+column, and let us easily generate an `n_responses` column (the number
+of responses in each vector in `Y`):
+
+``` r
+data_for_stan = nested_df %>%
+  compose_data(n_responses = length(Y[[1]]))
+```
+
+Then we can fit the model:
+
+``` r
+mv = sampling(mv_stanmodel, data = data_for_stan, chains = 4, iter = 5000)
+```
+
+### Posterior predictions
+
+What we’d really like to be able to do is easily make use of the `Mu`
+vector and `Sigma` matrix from the posterior draws. The latest version
+of `tidybayes` now supports extracting variables as *nested* list
+columns: any dimension you specify as a `.` is nested into the resulting
+data frame rather than being moved into a separate column. For example:
+
+``` r
+mv %>%
+  spread_draws(Mu[.], Sigma[.,.]) %>%
+  head(10)
+```
+
+    ## # A tibble: 10 x 5
+    ##    .chain .iteration .draw Mu        Sigma            
+    ##     <int>      <int> <int> <list>    <list>           
+    ##  1      1          1     1 <dbl [3]> <dbl[,3] [3 x 3]>
+    ##  2      1          2     2 <dbl [3]> <dbl[,3] [3 x 3]>
+    ##  3      1          3     3 <dbl [3]> <dbl[,3] [3 x 3]>
+    ##  4      1          4     4 <dbl [3]> <dbl[,3] [3 x 3]>
+    ##  5      1          5     5 <dbl [3]> <dbl[,3] [3 x 3]>
+    ##  6      1          6     6 <dbl [3]> <dbl[,3] [3 x 3]>
+    ##  7      1          7     7 <dbl [3]> <dbl[,3] [3 x 3]>
+    ##  8      1          8     8 <dbl [3]> <dbl[,3] [3 x 3]>
+    ##  9      1          9     9 <dbl [3]> <dbl[,3] [3 x 3]>
+    ## 10      1         10    10 <dbl [3]> <dbl[,3] [3 x 3]>
+
+This means we can use the `map()` family of functions from `purrr` to
+directly make use of posterior draws from the `Mu` vector and the
+`Sigma` covariance matrix; for example, we can generate posterior
+predictions by taking draws from a multivariate normal simply by passing
+`Mu` and `Sigma` onto the existing `MASS::mvrnorm()` function without
+much additional fuss:
+
+``` r
+mv %>%
+  spread_draws(Mu[.], Sigma[.,.]) %>%
+  mutate(
+    .variable = list(paste0("y", 1:3)),
+    .prediction = map2(Mu, Sigma, MASS::mvrnorm, n = 1)
+  ) %>%
+  unnest(.variable, .prediction) %>%
+  gather_pairs(.variable, .prediction) %>%
+  ggplot(aes(x = .x, y = .y)) +
+  stat_bin_hex(bins = 25) +
+  geom_point(data = paired_df, pch = 21, fill = "white") +
+  scale_fill_distiller(direction = 1, guide = FALSE) +
+  facet_grid(.row ~ .col)
+```
+
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
+
+We could also show something from the means at the same time:
+
+``` r
+draws = mv %>%
+  spread_draws(Mu[.], Sigma[.,.]) %>%
+  mutate(
+    .variable = list(paste0("y", 1:3)),
+    .prediction = map2(Mu, Sigma, MASS::mvrnorm, n = 1)
+  )
+  
+predictions = draws %>%
+  unnest(.variable, .prediction) %>%
+  gather_pairs(.variable, .prediction)
+
+means = draws %>%
+  unnest(.variable, Mu) %>%
+  gather_pairs(.variable, Mu)
+
+predictions %>%
+  ggplot(aes(x = .x, y = .y)) +
+  stat_bin_hex(bins = 25) +
+  stat_ellipse(data = means) +
+  stat_ellipse(data = means, level = .66) +
+  geom_point(data = paired_df, pch = 21, fill = "white") +
+  scale_fill_distiller(direction = 1, guide = FALSE) +
+  facet_grid(.row ~ .col)
+```
+
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
