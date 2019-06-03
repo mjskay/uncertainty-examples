@@ -23,6 +23,7 @@ library(gganimate)
 library(cowplot)
 library(lubridate)
 library(ggridges)
+library(colorspace)
 
 theme_set(
   theme_tidybayes()
@@ -145,7 +146,9 @@ This is pretty hard to see, so let's just look at the data since 2008:
 since_year = 2008
 set.seed(123456)
 fit_color = "#3573b9"
+fit_color_fill = hex(mixcolor(.6, sRGB(1,1,1), hex2RGB(fit_color)))
 prediction_color = "#e41a1c"
+prediction_color_fill = hex(mixcolor(.6, sRGB(1,1,1), hex2RGB(prediction_color)))
 
 x_axis = list(
   scale_x_date(date_breaks = "1 years", labels = year),
@@ -282,7 +285,7 @@ predict_plot_equalarea = predictions %>%
   filter(date %in% c(ymd("2019-05-01"), ymd("2019-11-01"), ymd("2020-05-01"))) %>%
   ggplot(aes(x = .prediction)) +
   geom_hline(yintercept = 0, color = "gray85", linetype = "dashed") +
-  stat_density(fill = prediction_color, adjust = 2, alpha = 3/5) +
+  stat_density(fill = prediction_color_fill, adjust = 2) +
   ylab(NULL) +
   xlab(NULL) +
   scale_y_continuous(breaks = NULL) +
@@ -353,11 +356,48 @@ fits %>%
       mutate(.value = .prediction, type = "prediction")
   ) %>%
   ggplot(aes(y = ordered(date), x = .value, fill = type)) +
-  geom_density_ridges(aes(height = stat(ndensity)), alpha = 3/5, color = NA, bandwidth = 0.0004, scale = .95) +
+  geom_density_ridges(aes(height = stat(ndensity)), size = NA, bandwidth = 0.0004, scale = .95) +
   scale_y_discrete(labels = function(x) strftime(x, "%b\n%Y")) +
-  scale_fill_manual(values = c(fit_color, prediction_color), guide = FALSE) +
+  scale_fill_manual(values = c(fit_color_fill, prediction_color_fill), guide = FALSE) +
   coord_flip(xlim = c(0, y_max), expand = FALSE) +
   theme(axis.text.x = element_text(hjust = 0))
+```
+
+### CDF
+
+```{r}
+predict_ccdf_plot = predictions %>%
+  filter(date %in% c(ymd("2019-05-01"), ymd("2019-11-01"), ymd("2020-05-01"))) %>%
+  ggplot(aes(x = .prediction)) +
+  stat_ecdf(aes(y = 1 - stat(y)), geom = "area", fill = prediction_color_fill) +
+  ylab(NULL) +
+  xlab(NULL) +
+  scale_y_reverse(breaks = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  coord_flip(xlim = c(0, y_max), expand = FALSE) +
+  facet_grid(. ~ date, labeller = labeller(date = function(x) strftime(x, "%b\n%Y")), switch = "x") +
+  facet_x_labels
+
+fit_ccdf_plot = fits %>%
+  filter(date %in% (ymd("2007-11-01") + months(seq(0, 22*6, by = 6)))) %>%
+  ggplot(aes(x = .value)) +
+  stat_ecdf(aes(y = 1 - stat(y)), geom = "area", fill = fit_color, alpha = 3/5) +
+  ylab(NULL) +
+  xlab(NULL) +
+  scale_y_reverse(breaks = NULL) +
+  scale_x_continuous(labels = scales::percent) +
+  coord_flip(xlim = c(0, y_max), expand = FALSE) +
+  facet_grid(. ~ date, labeller = labeller(date = function(x) strftime(x, "%b\n%Y")), switch = "x", scale = "free_x") +
+  facet_x_labels
+
+plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(7.85, 1),
+  fit_ccdf_plot + title,
+  predict_ccdf_plot
+  )
+```
+
+```{r eval = FALSE, include = FALSE}
+ggsave(filename = "us-unemployment_files/us-unemployment-fit-ccdf.pdf", useDingbats = FALSE, width = 9, height = 4.5)
 ```
 
 ## Last point predictions
@@ -462,6 +502,131 @@ first_prediction %>%
   median_qi(.prediction)
 ```
 
+## Continuous encodings (for single prediction)
+
+```{r, fig.width = 9, fig.height = 2}
+density_plot = first_prediction %>% 
+  ggplot(aes(x = .prediction)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  stat_density_ridges(aes(y = 0), geom = "density_ridges_gradient", bandwidth = 0.0004, size = NA, fill = prediction_color_fill) +
+  ylab(NULL) +
+  xlab(NULL) +
+  labs(subtitle = paste0("Uncertainty in what US unemployment will be in ", strftime(first_prediction$date[[1]], "%b %Y"))) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = .1)) +
+  coord_cartesian(xlim = c(0, .0415), expand = FALSE) +
+  theme(strip.text.x = element_text(hjust = 0, size = 8)) +
+  theme(axis.text.x = element_text(hjust = 0.1)) +
+  labs(subtitle = "Uncertainty in what US unemployment will be in May 2019\nDensity plot")
+
+density_plot
+```
+
+```{r, fig.width = 9, fig.height = 2}
+histogram_plot = first_prediction %>% 
+  ggplot(aes(x = .prediction)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  geom_histogram(binwidth = 0.0004, size = NA, fill = prediction_color_fill) +
+  ylab(NULL) +
+  xlab(NULL) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = .1)) +
+  coord_cartesian(xlim = c(0, .0415), expand = FALSE) +
+  theme(strip.text.x = element_text(hjust = 0, size = 8)) +
+  theme(axis.text.x = element_text(hjust = 0.1)) +
+  labs(subtitle = "\nHistogram")
+
+histogram_plot
+```
+
+```{r, fig.width = 9, fig.height = 2}
+violin_plot = first_prediction %>% 
+  ggplot(aes(x = .prediction)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  stat_density_ridges(aes(y = 0), geom = "density_ridges_gradient", bandwidth = 0.0004, size = NA, fill = prediction_color_fill) +
+  geom_density_ridges(aes(y = 0, height = -stat(density), rel_min_height = NA), bandwidth = 0.0004, size = NA, fill = prediction_color_fill) +
+  ylab(NULL) +
+  xlab(NULL) +
+  labs(subtitle = paste0("Uncertainty in what US unemployment will be in ", strftime(first_prediction$date[[1]], "%b %Y"))) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = .1)) +
+  coord_cartesian(xlim = c(0, .0415), expand = FALSE) +
+  theme(strip.text.x = element_text(hjust = 0, size = 8)) +
+  theme(axis.text.x = element_text(hjust = 0.1)) +
+  labs(subtitle = "\nViolin plot")
+
+violin_plot
+```
+
+```{r, fig.width = 9, fig.height = 1}
+gradient_plot = first_prediction %>% 
+  ggplot(aes(x = .prediction)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  stat_density_ridges(aes(y = 0, height = 1, fill = stat(density)), geom = "density_ridges_gradient", bandwidth = 0.0004, color = NA) +
+  scale_fill_gradient(low = "white", high = hex(mixcolor(.72, sRGB(1,1,1), hex2RGB(prediction_color))), guide = FALSE) +
+  ylab(NULL) +
+  xlab(NULL) +
+  labs(subtitle = paste0("Uncertainty in what US unemployment will be in ", strftime(first_prediction$date[[1]], "%b %Y"))) +
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = .1)) +
+  coord_cartesian(xlim = c(0, .0415), expand = FALSE) +
+  theme(strip.text.x = element_text(hjust = 0, size = 8)) +
+  theme(axis.text.x = element_text(hjust = 0.1)) +
+  labs(subtitle = "Gradient plot")
+
+gradient_plot
+```
+
+```{r, fig.width = 9, fig.height = 2}
+cdf_plot = first_prediction %>% 
+  ggplot(aes(x = .prediction)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  stat_ecdf(geom = "area", fill = prediction_color_fill, size = NA) +
+  ylab(NULL) +
+  xlab(NULL) +
+  labs(subtitle = paste0("Uncertainty in what US unemployment will be in ", strftime(first_prediction$date[[1]], "%b %Y"))) +
+  scale_y_continuous(breaks = c(0,.5,1), labels = scales::percent_format(accuracy = 1)) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = .1)) +
+  coord_cartesian(xlim = c(0, .0415), expand = FALSE) +
+  theme(strip.text.x = element_text(hjust = 0, size = 8)) +
+  theme(axis.text.x = element_text(hjust = 0.1)) +
+  labs(subtitle = "\nCumulative distribution function (CDF)", y = "Pr(unemployment < x)")
+
+cdf_plot
+```
+
+```{r, fig.width = 9, fig.height = 2}
+ccdf_plot = first_prediction %>% 
+  ggplot(aes(x = .prediction)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  stat_ecdf(aes(y = 1 - stat(y)), geom = "area", fill = prediction_color_fill, size = NA) +
+  ylab(NULL) +
+  xlab(NULL) +
+  labs(subtitle = paste0("Uncertainty in what US unemployment will be in ", strftime(first_prediction$date[[1]], "%b %Y"))) +
+  scale_y_continuous(breaks = c(0,.25,.5,.75,1), labels = scales::percent_format(accuracy = 1)) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = .1)) +
+  coord_cartesian(xlim = c(0, .0415), expand = FALSE) +
+  theme(strip.text.x = element_text(hjust = 0, size = 8)) +
+  theme(axis.text.x = element_text(hjust = 0.1)) +
+  labs(subtitle = "Complementary cumulative distribution function (CCDF)", y = "Pr(unemployment > x)")
+
+ccdf_plot
+```
+
+```{r, fig.height = 7, fig.width = 9}
+plot_grid(ncol = 1, align = "hv", rel_heights = c(2,2,1.5,2,2),
+  density_plot,
+  violin_plot,
+  gradient_plot,
+  cdf_plot,
+  ccdf_plot
+)
+```
+
+```{r eval = FALSE, include = FALSE}
+ggsave(filename = "us-unemployment_files/us-unemployment-next-month-continuous.pdf", useDingbats = FALSE, width = 9, height = 7)
+```
+
 
 ## Quantile dotplot
 
@@ -472,7 +637,7 @@ predict_plot = predictions %>%
   do(tibble(.prediction = quantile(.$.prediction, ppoints(50)))) %>%
   ggplot(aes(x = .prediction)) +
   geom_hline(yintercept = 0, color = "gray85", linetype = "dashed") +
-  geom_dotplot(fill = prediction_color, color = NA, binwidth = .001, alpha = 3/5, dotsize = 1.1) +
+  geom_dotplot(fill = prediction_color_fill, size = NA, binwidth = .001, dotsize = 1.1) +
   ylab(NULL) +
   xlab(NULL) +
   scale_y_continuous(breaks = NULL) +
