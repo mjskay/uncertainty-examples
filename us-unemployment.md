@@ -103,25 +103,25 @@ m = with(df, bsts(logit_unemployment, state.specification = list() %>%
   niter = 10000))
 ```
 
-    ## =-=-=-=-= Iteration 0 Tue Jun 04 16:29:14 2019
+    ## =-=-=-=-= Iteration 0 Tue Jun 04 16:37:35 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 1000 Tue Jun 04 16:29:27 2019
+    ## =-=-=-=-= Iteration 1000 Tue Jun 04 16:37:49 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 2000 Tue Jun 04 16:29:40 2019
+    ## =-=-=-=-= Iteration 2000 Tue Jun 04 16:38:03 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 3000 Tue Jun 04 16:29:53 2019
+    ## =-=-=-=-= Iteration 3000 Tue Jun 04 16:38:17 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 4000 Tue Jun 04 16:30:06 2019
+    ## =-=-=-=-= Iteration 4000 Tue Jun 04 16:38:30 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 5000 Tue Jun 04 16:30:19 2019
+    ## =-=-=-=-= Iteration 5000 Tue Jun 04 16:38:42 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 6000 Tue Jun 04 16:30:33 2019
+    ## =-=-=-=-= Iteration 6000 Tue Jun 04 16:38:55 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 7000 Tue Jun 04 16:30:46 2019
+    ## =-=-=-=-= Iteration 7000 Tue Jun 04 16:39:08 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 8000 Tue Jun 04 16:31:01 2019
+    ## =-=-=-=-= Iteration 8000 Tue Jun 04 16:39:22 2019
     ##  =-=-=-=-=
-    ## =-=-=-=-= Iteration 9000 Tue Jun 04 16:31:14 2019
+    ## =-=-=-=-= Iteration 9000 Tue Jun 04 16:39:35 2019
     ##  =-=-=-=-=
 
 ## Spaghetti plot
@@ -668,7 +668,7 @@ predict_plot = predictions %>%
   do(tibble(.prediction = quantile(.$.prediction, ppoints(50)))) %>%
   ggplot(aes(x = .prediction)) +
   geom_hline(yintercept = 0, color = "gray85", linetype = "dashed") +
-  geom_dotplot(fill = prediction_color_fill, size = NA, binwidth = .001, dotsize = 1.1) +
+  geom_dotplot(fill = prediction_color_fill, color = NA, binwidth = .001, dotsize = 1.1) +
   ylab(NULL) +
   xlab(NULL) +
   scale_y_continuous(breaks = NULL) +
@@ -676,11 +676,7 @@ predict_plot = predictions %>%
   coord_flip(xlim = c(0, y_max), expand = FALSE) +
   facet_grid(. ~ date, labeller = labeller(date = function(x) strftime(x, "%b\n%Y")), switch = "x", scales = "free_x") +
   facet_x_labels
-```
 
-    ## Warning: Ignoring unknown parameters: size
-
-``` r
 plot_grid(align = "h", axis = "tb", ncol = 2, rel_widths = c(4, 1),
     fit_plot,
     predict_plot

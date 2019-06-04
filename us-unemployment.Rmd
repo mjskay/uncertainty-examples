@@ -637,7 +637,7 @@ predict_plot = predictions %>%
   do(tibble(.prediction = quantile(.$.prediction, ppoints(50)))) %>%
   ggplot(aes(x = .prediction)) +
   geom_hline(yintercept = 0, color = "gray85", linetype = "dashed") +
-  geom_dotplot(fill = prediction_color_fill, size = NA, binwidth = .001, dotsize = 1.1) +
+  geom_dotplot(fill = prediction_color_fill, color = NA, binwidth = .001, dotsize = 1.1) +
   ylab(NULL) +
   xlab(NULL) +
   scale_y_continuous(breaks = NULL) +
