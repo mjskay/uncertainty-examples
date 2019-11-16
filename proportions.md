@@ -181,7 +181,7 @@ p = proportions %>%
   xlab("proportion") +
   coord_cartesian(expand = FALSE)
   
-animate(p, nframes = n_hops * 2, fps = 2.5, type = "cairo", width = 600, height = 400)
+animate(p, nframes = n_hops * 2, fps = 2.5, type = "cairo", width = 600, height = 400, res = 100)
 ```
 
     ## nframes and fps adjusted to match transition
