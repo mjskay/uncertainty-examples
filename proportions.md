@@ -36,6 +36,12 @@ df = data_frame(
   count = c(100, 50, 30),
   proportion = count / sum(count)
 )
+```
+
+    ## Warning: `data_frame()` is deprecated, use `tibble()`.
+    ## This warning is displayed once per session.
+
+``` r
 df
 ```
 
@@ -85,6 +91,9 @@ p = df %>%
 animate(p, nframes = n_hops * 2, width = 600, height = 300)
 ```
 
+    ## Warning in file.create(to[okay]): cannot create file 'proportions_files/
+    ## figure-gfm/hops-1.gif', reason 'No such file or directory'
+
 ![](proportions_files/figure-gfm/hops-1.gif)<!-- -->
 
 ## Quantile dotplots
@@ -130,6 +139,55 @@ df %>%
 
 ![](proportions_files/figure-gfm/quantile-dotplots-1.png)<!-- -->
 
+## Blinky dotplots
+
+One could also try combining HOPs and dotplots by drawing a quantile
+dotplot and then highlighting the closest quantile in each row to some
+draw from the posterior in each frame of a HOP. **Note** this is
+experimental (both the code and the technique itself are untested; **the
+code requires the latest development version of tidybayes from
+github**).
+
+``` r
+n_hops = 100
+
+proportions = df %>%
+  data_grid(group) %>%
+  add_fitted_draws(m) %>%
+  group_by(.draw) %>%
+  mutate(proportion = .value / sum(.value)) 
+
+quantiles = proportions %>%
+  group_by(group) %>%
+  summarise(proportion_quantile = list(quantile(proportion, ppoints(n_hops)))) 
+
+p = proportions %>%
+  sample_draws(n_hops) %>%
+  inner_join(quantiles, by = "group") %>%
+  unnest(proportion_quantile) %>%
+  group_by(group, .draw) %>%
+  mutate(
+    highlight = seq_along(proportion_quantile) == which.min(abs(proportion - proportion_quantile))
+  ) %>%
+  # ungroup() %>%
+  # filter(.draw == min(.draw)) %>%
+  ggplot(aes(y = group, x = proportion_quantile)) +
+  geom_dotsh(aes(fill = highlight, group = .draw), shape = 21, justification = 0.4, color = NA) +
+  guides(fill = FALSE) +
+  scale_fill_manual(values = c("gray85", "red")) +
+  transition_manual(.draw) +
+  xlim(0,1) +
+  ylab(NULL) +
+  xlab("proportion") +
+  coord_cartesian(expand = FALSE)
+  
+animate(p, nframes = n_hops * 2, fps = 2.5, type = "cairo", width = 600, height = 400)
+```
+
+    ## nframes and fps adjusted to match transition
+
+![](proportions_files/figure-gfm/blinky_dotplots-1.gif)<!-- -->
+
 ## References
 
 <div id="refs" class="references">
@@ -147,8 +205,8 @@ Computing Systems - CHI ’18*. <https://doi.org/10.1145/3173574.3173718>.
 
 Hullman, Jessica, Paul Resnick, and Eytan Adar. 2015. “Hypothetical
 Outcome Plots Outperform Error Bars and Violin Plots for Inferences
-about Reliability of Variable Ordering.” *PloS One* 10 (11). Public
-Library of Science. <https://doi.org/10.1371/journal.pone.0142444>.
+about Reliability of Variable Ordering.” *PloS One* 10 (11).
+<https://doi.org/10.1371/journal.pone.0142444>.
 
 </div>
 
