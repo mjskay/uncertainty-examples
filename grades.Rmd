@@ -470,3 +470,50 @@ grades %>%
     axis.title.x = element_text(hjust = 0)
   )
 ```
+
+
+```{r fig.width = 6, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = week, y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1.1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .4, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # histograms
+  stat_histinterval(aes(slab_alpha = stat(f), thickness = 1, fill = week == this_week),
+    breaks = seq(0, 1, by = .025), 
+    show_interval = FALSE, scale = .9, side = "both"
+  ) +
+
+  # single student line and points
+  geom_line(data = . %>% filter(student == highlight_student), color = "gray25", linetype = "dashed") +
+  geom_point(aes(fill = week == this_week), data = . %>% filter(student == highlight_student), pch = 21, color = "white", size = 3) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 2, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 2.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = 1:n_week) +
+  scale_color_manual(values = c("gray35", "red"), guide = FALSE, aesthetics = c("fill", "color")) +
+  scale_slab_alpha_continuous(guide = FALSE) +
+  coord_cartesian(expand = FALSE, clip = "off", xlim = c(0.5, n_week + 20)) +
+  labs(
+    x = "Week",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
