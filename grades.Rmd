@@ -1,0 +1,472 @@
+---
+title: "Grade distribution brainstorming"
+output: html_document
+self_contained: true
+---
+
+## Setup
+
+```{r chunk_options, include=FALSE}
+if (capabilities("cairo")) {
+  knitr::opts_chunk$set(
+    dev.args = list(png = list(type = "cairo"))
+  )
+}
+```
+
+```{r warning=FALSE, message=FALSE}
+library(tidybayes)
+library(ggplot2)
+library(tidyverse)
+
+theme_set(theme_tidybayes())
+```
+
+
+## Data
+
+Let's simulate a fake class with a hard assignment in week 6:
+
+```{r}
+set.seed(1234)
+
+n_student = 30            # number of students in the class
+n_week = 12               # number of weeks in the class
+
+median_ability = qlogis(.95)  # median student ability to simulate from on logit scale
+sd_ability = .5              # sd of student ability on a logit scale
+
+sd_difficulty = .2           # sd of assignment difficulty on a logit scale
+
+mean_sd_week_grade = 1    # mean of sd of week grades on a logit scale
+
+mean_week_total = 10        # mean number of points per week
+
+# define a hard assignment worth a lot of points in week 6
+week_6_extra_difficulty = 3
+week_6_extra_points = 30
+
+
+students = tibble(
+  student = paste0("s", str_pad(1:n_student, 2, pad = "0")),
+  ability = rnorm(n_student, median_ability, sd_ability),
+)
+
+grades = tibble(
+  week = 1:n_week, #ordered(paste0("w", str_pad(1:n_week, 2, pad = "0"))),
+  difficulty = rnorm(n_week, 0, sd_difficulty) + c(rep(0,5), week_6_extra_difficulty, rep(0,n_week - 6)),
+  week_total = rpois(n_week, mean_week_total) + c(rep(0,5), week_6_extra_points, rep(0,n_week - 6)),
+  sd_week_grade = rexp(n_week, 1/mean_sd_week_grade),
+  students = list(students)
+) %>%
+  unnest(students) %>%
+  mutate(
+    week_grade = plogis(rnorm(n(), ability - difficulty, sd_week_grade)),
+    week_points = week_grade * week_total
+  ) %>%
+  group_by(student) %>%
+  mutate(
+    points_so_far = cumsum(week_points),
+    grade_so_far = points_so_far / cumsum(week_total)
+  )
+
+# student trajectories
+grades %>%
+  ggplot(aes(x = week, y = grade_so_far, group = student)) +
+  geom_line()
+```
+
+## Some visualizations...
+
+Here's a dump of a bunch of ways of visualizing this...
+
+```{r fig.width = 9, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = week, y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1.1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .1, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # histograms
+  stat_histinterval(aes(fill = week == this_week), breaks = seq(0, 1, by = .025), alpha = .2, show_interval = FALSE) +
+
+  # single student line and points
+  geom_line(data = . %>% filter(student == highlight_student), color = "gray75", linetype = "dashed") +
+  geom_point(aes(color = week == this_week), data = . %>% filter(student == highlight_student)) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 1, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 1.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = 1:n_week, limits = c(1, n_week + 4)) +
+  scale_color_manual(values = c("gray50", "red"), guide = FALSE, aesthetics = c("fill", "color")) +
+  coord_cartesian(expand = FALSE, clip = "off") +
+  labs(
+    x = "Week",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
+
+```{r fig.width = 9, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = week, y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1.1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .1, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # histograms
+  stat_histinterval(aes(fill = week == this_week), breaks = seq(0, 1, by = .025), alpha = .2, show_interval = FALSE,
+    data = . %>% filter(week != this_week)) +
+  stat_histinterval(aes(fill = week == this_week), breaks = seq(0, 1, by = .025), alpha = .2, show_interval = FALSE,
+    data = . %>% filter(week == this_week), scale = 2.5, outline_bars = TRUE, slab_color = "white") +
+
+  # single student line and points
+  geom_line(data = . %>% filter(student == highlight_student), color = "gray75", linetype = "dashed") +
+  geom_point(aes(color = week == this_week), data = . %>% filter(student == highlight_student)) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 1, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 1.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = 1:n_week, limits = c(1, n_week + 4)) +
+  scale_color_manual(values = c("gray50", "red"), guide = FALSE, aesthetics = c("fill", "color")) +
+  coord_cartesian(expand = FALSE, clip = "off") +
+  labs(
+    x = "Week",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
+
+
+
+```{r fig.width = 6, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = week, y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .4, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # intervals
+  stat_interval(aes(color = week == this_week), alpha = .1, .width = c(.5, .8, .95, 1),
+    data = . %>% filter(week != this_week)
+  ) +
+
+  # histogram
+  stat_histinterval(fill = now_color, data = . %>% filter(week == this_week),
+    breaks = seq(0, 1, by = .025), 
+    show_interval = FALSE, scale = 10, outline_bars = TRUE, slab_color = "white", alpha = .2
+  ) +
+  
+  # single student line and points
+  geom_line(data = . %>% filter(student == highlight_student), color = "gray25", linetype = "dashed") +
+  geom_point(aes(color = week == this_week), data = . %>% filter(student == highlight_student)) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 10, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 10.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = 1:n_week) +
+  scale_color_manual(values = c("gray25", "red"), guide = FALSE, aesthetics = c("fill", "color")) +
+  coord_cartesian(expand = FALSE, clip = "off", xlim = c(0.5, n_week + 20)) +
+  labs(
+    x = "Week",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
+
+```{r fig.width = 6, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = week, y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1.1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .4, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # intervals
+  stat_lineribbon(aes(fill = NA), alpha = .1, .width = c(.5, .8, .95, 1), color = NA, fill = "gray25") +
+
+  # histogram
+  stat_histinterval(fill = now_color, data = . %>% filter(week == this_week),
+    breaks = seq(0, 1, by = .025), 
+    show_interval = FALSE, scale = 10, outline_bars = TRUE, slab_color = "white", alpha = .2
+  ) +
+  
+  # single student line and points
+  geom_line(data = . %>% filter(student == highlight_student), color = "gray25", linetype = "dashed") +
+  geom_point(aes(color = week == this_week), data = . %>% filter(student == highlight_student)) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 10, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 10.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = 1:n_week) +
+  scale_color_manual(values = c("gray25", "red"), guide = FALSE, aesthetics = c("fill", "color")) +
+  coord_cartesian(expand = FALSE, clip = "off", xlim = c(0.5, n_week + 20)) +
+  labs(
+    x = "Week",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
+
+
+```{r fig.width = 6, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = week, y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1.1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .4, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # intervals
+  stat_lineribbon(aes(fill = NA), alpha = 1/n_student^1.1, .width = ppoints(n_student), color = NA, fill = "gray25") +
+
+  # histogram
+  stat_histinterval(aes(slab_alpha = stat(f)), fill = now_color, data = . %>% filter(week == this_week),
+    breaks = seq(0, 1, by = .025), 
+    show_interval = FALSE, scale = 10
+  ) +
+  
+  # single student line and points
+  geom_line(data = . %>% filter(student == highlight_student), color = "gray25", linetype = "dashed") +
+  geom_point(aes(color = week == this_week), data = . %>% filter(student == highlight_student)) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 10, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 10.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = 1:n_week) +
+  scale_color_manual(values = c("gray25", "red"), guide = FALSE, aesthetics = c("fill", "color")) +
+  scale_slab_alpha_continuous(guide = FALSE) +
+  coord_cartesian(expand = FALSE, clip = "off", xlim = c(0.5, n_week + 20)) +
+  labs(
+    x = "Week",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
+
+
+```{r fig.width = 6, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = week, y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1.1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .4, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # intervals
+  stat_lineribbon(aes(fill = NA), alpha = .1, .width = c(.5, .8, .95, 1), color = NA, fill = "gray25") +
+
+  # histogram
+  geom_dots(aes(fill = student == highlight_student, group = NA), data = . %>% filter(week == this_week),
+    scale = 10, color = NA
+  ) +
+  
+  # single student line and points
+  geom_line(data = . %>% filter(student == highlight_student), color = "gray25", linetype = "dashed") +
+  geom_point(aes(color = week == this_week), data = . %>% filter(student == highlight_student, week != this_week)) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 10, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 10.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = 1:n_week) +
+  scale_color_manual(values = c("gray25", "red"), guide = FALSE) +
+  scale_fill_manual(values = c("gray75", "red"), guide = FALSE) +
+  coord_cartesian(expand = FALSE, clip = "off", xlim = c(0.5, n_week + 20)) +
+  labs(
+    x = "Week",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
+
+```{r fig.width = 6, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = week, y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1.1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .4, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # intervals
+  stat_histinterval(aes(slab_alpha = stat(f), thickness = 1), fill = "gray50", data = . %>% filter(week != this_week),
+    breaks = seq(0, 1, by = .025), 
+    show_interval = FALSE, scale = .9, side = "both"
+  ) +
+
+  # histogram
+  stat_histinterval(aes(slab_alpha = stat(f)), fill = now_color, data = . %>% filter(week == this_week),
+    breaks = seq(0, 1, by = .025), 
+    show_interval = FALSE, scale = 10
+  ) +
+  
+  # single student line and points
+  geom_line(data = . %>% filter(student == highlight_student), color = "gray25", linetype = "dashed") +
+  geom_point(aes(fill = week == this_week), data = . %>% filter(student == highlight_student), pch = 21, color = "white", size = 3) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 10, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 10.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = 1:n_week) +
+  scale_color_manual(values = c("gray35", "red"), guide = FALSE, aesthetics = c("fill", "color")) +
+  scale_slab_alpha_continuous(guide = FALSE) +
+  coord_cartesian(expand = FALSE, clip = "off", xlim = c(0.5, n_week + 20)) +
+  labs(
+    x = "Week",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
+
+
+
+```{r fig.width = 6, fig.height = 5}
+highlight_student = "s03"
+now_color = "red"
+this_week = n_week
+
+grades %>%
+  filter(week <= this_week) %>%
+  ggplot(aes(x = ifelse(week == this_week, this_week, 1), y = grade_so_far)) +
+  
+  # past weeks | this week
+  annotate("text", label = "Past weeks", color = "gray50", x = 1.1, y = 1.025, vjust = 0, hjust = 0) +
+  annotate("segment", x = this_week, xend = this_week, y = 0, yend = 1.06, color = now_color, alpha = 0.2) +
+  annotate("text", label = "This week", color = now_color, x = this_week + .4, y = 1.025, vjust = 0, hjust = 0) +
+  
+  # intervals
+  stat_histinterval(aes(group = week, slab_alpha = week^2), 
+    breaks = seq(0, 1, by = .025), show_interval = FALSE, outline_bars = TRUE,
+    data = . %>% filter(week != this_week), scale = 10) +
+
+  # histogram
+  stat_histinterval(fill = now_color, data = . %>% filter(week == this_week),
+    breaks = seq(0, 1, by = .025), 
+    show_interval = FALSE, scale = 10
+  ) +
+  
+  # single student line and points
+  geom_point(aes(fill = week == this_week, alpha = week^2), data = . %>% filter(student == highlight_student), pch = 21, color = "white", size = 3) +
+  
+  # current grade line and text
+  geom_segment(aes(xend = week + 10, yend = grade_so_far), data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, linetype = "dashed") +
+  geom_text(aes(x = week + 10.1, label = paste0("Current grade = ", scales::percent(grade_so_far, accuracy = .1))),
+    data = . %>% filter(student == highlight_student, week == this_week), 
+    color = now_color, hjust = 0, vjust = 0.4) +
+  
+  scale_y_continuous(breaks = seq(0, 1, by = .1), labels = scales::percent_format(accuracy = 1), limits = c(0, 1.06)) +
+  scale_x_continuous(breaks = NULL) +
+  scale_color_manual(values = c("gray35", "red"), guide = FALSE, aesthetics = c("fill", "color")) +
+  scale_slab_alpha_continuous(guide = FALSE) +
+  scale_alpha_continuous(guide = FALSE) +
+  coord_cartesian(expand = FALSE, clip = "off", xlim = c(0.5, n_week + 20)) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "gray95"),
+    axis.title.x = element_text(hjust = 0)
+  )
+```
