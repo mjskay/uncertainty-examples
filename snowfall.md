@@ -158,14 +158,15 @@ anim = tibble(
     time = 1:n(),
     y = list(c(0,1))
   ) %>%
-  unnest() %>%
+  unnest(y) %>%
   mutate(
     time = time + y
   ) %>%
   ggplot(aes(x = snowfall, y = 1 - y, group = id)) +
-  ggfx::with_blur(
-    sigma = 3,
-    geom_point(size = 3, color = "white")
+  ggfx::with_kernel(
+    # sigma = 3,
+    geom_point(size = 3, color = "white"),
+    "Comet:0x10-90"
   ) +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = seq(0, 18, by = 2)) +
@@ -182,12 +183,7 @@ anim = tibble(
   ease_aes("quadratic-in") +
   exit_fade() +
   shadow_wake(wake_length = 0.25/k)
-```
 
-    ## Warning: `cols` is now required when using unnest().
-    ## Please use `cols = c(y)`
-
-``` r
 animate(anim, nframes = nframes, fps = nframes / k * 2.5, res = 150, width = 600, height = 300)
 ```
 
