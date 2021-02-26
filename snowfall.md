@@ -139,8 +139,10 @@ animate(anim, fps = 2.5, res = 100, width = 400, height = 200)
 
 ![](snowfall_files/figure-gfm/unnamed-chunk-6-1.gif)<!-- -->
 
-Or if we’re getting excessive, here’s the HOPs version as falling
-snowballs:
+Or if we’re getting excessive, we can make a HOPs version with falling
+snowballs. We’ll also use the experimental
+[ggfx](https://ggfx.data-imaginist.com/) package to blur the snowballs
+to make them look a bit more authentic:
 
 ``` r
 k = 50
@@ -161,7 +163,10 @@ anim = tibble(
     time = time + y
   ) %>%
   ggplot(aes(x = snowfall, y = 1 - y, group = id)) +
-  geom_point(size = 2, color = "white") +
+  ggfx::with_blur(
+    sigma = 3,
+    geom_point(size = 3, color = "white")
+  ) +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = seq(0, 18, by = 2)) +
   coord_cartesian(expand = FALSE, xlim = c(0,18)) +
@@ -177,8 +182,13 @@ anim = tibble(
   ease_aes("quadratic-in") +
   exit_fade() +
   shadow_wake(wake_length = 0.25/k)
+```
 
-animate(anim, nframes = nframes, fps = nframes / k * 2.5, res = 100, width = 400, height = 200)
+    ## Warning: `cols` is now required when using unnest().
+    ## Please use `cols = c(y)`
+
+``` r
+animate(anim, nframes = nframes, fps = nframes / k * 2.5, res = 150, width = 600, height = 300)
 ```
 
 ![](snowfall_files/figure-gfm/unnamed-chunk-7-1.gif)<!-- -->
