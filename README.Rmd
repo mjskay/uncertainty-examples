@@ -26,3 +26,5 @@ These are typically pretty roughly thrown together, and are in a bit of a stream
 - [snowfall](snowfall.md): quantile dotplots and HOPs for a snowfall prediction.
 
 - [mtcars](mtcars.md): Some spaghetti plots and HOPs with mtcars data.
+
+- [mcse_dotplots](mcse_dotplots.md): Quantile dotplots that "blur" each quantile according to its Monte Carlo standard error
