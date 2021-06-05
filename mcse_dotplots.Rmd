@@ -114,21 +114,22 @@ mcse_dotplot(annotate_mcse = TRUE) /
 
 A histogram version based on a [suggestion from Dan Simpson](https://twitter.com/dan_p_simpson/status/1401051206009561090?s=20).
 
-We'll bin percentiles using a rolling window based on which percentiles
+We'll bin percentiles using a rolling window based on which quantiles
 are within 2 SEs of each other:
 
-```{r mcse_histogram, fig.width = 5, fig.height = 10}
-n_quantile = 100 # number of quantiles to use for binning
-
-mcse_histogram = function(n = 500) {
+```{r mcse_histogram, fig.width = 15, fig.height = 10}
+mcse_histogram = function(
+  n = 500, 
+  n_max_bin = 100 # maximum number of bins (quantiles)
+) {
 
   set.seed(1234)
   x = rnorm(n)
   
   df = tibble(
-      q_mean = quantile(x, probs = ppoints(n_quantile)),
-      q_se = mcse_quantile(x, ppoints(n_quantile), names = FALSE)
-    ) 
+      q_mean = quantile(x, probs = ppoints(n_max_bin)),
+      q_se = mcse_quantile(x, ppoints(n_max_bin), names = FALSE)
+    )
   
   # bin the quantiles based on which ones are within 2 SEs of each other
   next_split = -Inf
@@ -158,14 +159,23 @@ mcse_histogram = function(n = 500) {
       adj_upper = rowMeans(cbind(upper, lead(lower)), na.rm = TRUE)
     )
   
+  # hack to make sure data is covered
+  df_bins$adj_lower[[1]] = min(x, df_bins$adj_lower[[1]])
+  df_bins$adj_upper[[nrow(df_bins)]] = max(x, df_bins$adj_upper[[nrow(df_bins)]])
+  
   # Now we'll count how many data points in the sample are actually in these
   # bins to determine (1) densities and (2) actual bin boundaries:
   df_bins_densities = df_bins %>%
     mutate(
       data = map2(adj_lower, adj_upper, ~ x[.x <= x & x < .y]),
       n = lengths(data),
-      adj_lower = sapply(data, min),
-      adj_upper = sapply(data, max),
+      lower = sapply(data, min),
+      upper = sapply(data, max)
+    ) %>%
+    mutate(
+      # make sure bin edges touch
+      adj_lower = rowMeans(cbind(lag(upper), lower), na.rm = TRUE),
+      adj_upper = rowMeans(cbind(upper, lead(lower)), na.rm = TRUE),
       density = n / (adj_upper - adj_lower)
     )
   
@@ -176,16 +186,25 @@ mcse_histogram = function(n = 500) {
   ) %>%
     ggplot(aes(x = x, ymin = 0, ymax = density)) +
     geom_ribbon(color = "white") +
-    scales(n)
+    labs(
+      y = NULL,
+      x = NULL,
+      subtitle = paste0("Sample size = ", n, ", max bins = ", n_max_bin)
+    ) +
+    coord_cartesian(xlim = c(-3.5, 3.5)) +
+    scale_y_continuous(breaks = NULL)
 }
 
-mcse_histogram(500) /
-  mcse_histogram(1000) /
-  mcse_histogram(5000) /
-  mcse_histogram(10000) +
+
+row = function(n) (mcse_histogram(n) + mcse_histogram(n, 50) + mcse_histogram(n, 20))
+
+row(500) /
+  row(1000) /
+  row(5000) /
+  row(10000) +
   plot_annotation(
     title = "Histograms of samples from N(0,1)",
-    subtitle = "Binned to keep percentiles together if they are within 2*MCSE", 
+    subtitle = paste0("Binned to keep quantiles together if they are within 2*MCSE"), 
   )
   
   
