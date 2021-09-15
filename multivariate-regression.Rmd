@@ -56,7 +56,7 @@ df %>%
 ### Model
 
 ```{r, cache = TRUE}
-m = brm(mvbind(y1, y2, y3) ~ 0 + intercept, data = df)
+m = brm(mvbind(y1, y2, y3) ~ 0 + intercept, data = df, file = "multivariate-regression_files/model.rds")
 ```
 
 ### Correlations from the model
@@ -68,7 +68,7 @@ m %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".row", ".col"), sep = "__") %>%
   ggplot(aes(x = .value, y = 0)) +
-  geom_halfeyeh() +
+  stat_halfeye() +
   xlim(c(-1, 1)) +
   xlab("rescor") +
   ylab(NULL) +
@@ -142,18 +142,14 @@ Some other things possibly worth improving:
 rescor_plot_heat = m %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
-  ggplot(aes(x = .value, y = 0)) +
-  geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
-  geom_vline(xintercept = 0, color = "gray65", linetype = "dashed") +
-  stat_pointintervalh() +
-  xlim(c(-1, 1)) +
-  xlab("correlation") +
-  ylab(NULL) +
-  scale_y_continuous(breaks = NULL) +
-  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_continuous_diverging(palette = "Blue-Yellow 2", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
-  coord_flip() +
+  ggplot(aes(y = .value, x = 0)) +
+  stat_halfeye(aes(fill = stat(y)), fill_type = "gradient") +
+  geom_hline(yintercept = 0, color = "gray65", linetype = "dashed") +
+  ylim(c(-1, 1)) +
+  ylab("correlation") +
+  xlab(NULL) +
+  scale_x_continuous(breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
   facet_grid(.row ~ .col)
 
 data_plot + rescor_plot_heat
@@ -193,7 +189,7 @@ data_plot_large
 ```
 
 ```{r, cache = TRUE}
-m_large = brm(mvbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large)
+m_large = brm(mvbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large, file = "multivariate-regression_files/model_large.rds")
 ```
 
 ### Density version
@@ -204,17 +200,14 @@ I've dropped the intervals for this (they start to become illegible) and did a f
 rescor_plot_heat_large = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
-  ggplot(aes(x = .value, y = 0)) +
-  geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
-  geom_vline(xintercept = 0, color = "white", size = 1) +
-  xlim(c(-1, 1)) +
-  xlab("correlation") +
-  ylab(NULL) +
-  scale_y_continuous(breaks = NULL) +
+  ggplot(aes(y = .value, x = 0)) +
+  stat_slab(aes(fill = stat(y)), fill_type = "gradient") +
+  geom_hline(yintercept = 0, color = "white", size = 1) +
+  ylab("correlation") +
+  xlab(NULL) +
   scale_x_continuous(breaks = NULL) +
-  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
-  coord_flip() +
+  scale_y_continuous(breaks = NULL, limits = c(-1, 1)) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
   facet_grid(.row ~ .col)
 
 data_plot_large + rescor_plot_heat_large
@@ -237,15 +230,15 @@ rescor_plot_heat_dither = m_large %>%
   summarise(
     .value = list(sample(.value, w * h)),
     x = list(rep(1:w, times = h)),
-    y = list(rep(1:h, each = w))
+    y = list(rep(1:h, each = w)),
+    .groups = "drop_last"
   ) %>%
-  unnest() %>%
+  unnest(cols = c(.value, x, y)) %>%
   ggplot(aes(x, y, fill = .value)) +
   geom_raster() +
   facet_grid(.row ~ .col) +
-  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_continuous_diverging(palette = "Blue-Yellow 2", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "corr.") +
+  # scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "corr.") +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
   xlab(NULL) +
