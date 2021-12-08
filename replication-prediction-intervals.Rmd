@@ -74,7 +74,7 @@ results_summary = results %>%
 results_summary
 ```
 
-Plotting these, if criteria that are well-calibrated should be at 95% and
+Plotting these, criteria that are well-calibrated should be at 95% and
 not be sensitive to sample size:
 
 ```{r, fig.width = 7.1, fig.height = 4}

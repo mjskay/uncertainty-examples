@@ -88,7 +88,7 @@ results_summary
     ##  9          91       0.845       0.823     0.948
     ## 10         100       0.832       0.834     0.950
 
-Plotting these, if criteria that are well-calibrated should be at 95%
+Plotting these, criteria that are well-calibrated should be at 95%
 and not be sensitive to sample size:
 
 ``` r
