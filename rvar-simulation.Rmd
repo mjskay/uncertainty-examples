@@ -1,0 +1,775 @@
+---
+title: "Simulating data with posterior::rvar"
+author: "Matthew Kay"
+date: "12/27/2021"
+output: github_document
+---
+
+## Introduction
+
+This document demonstrates some features of the `posterior::rvar()` random
+variable datatype, how to simulate data with it, and how to visualize random
+variables using [ggdist](https://mjskay.github.io/ggdist). It also shows some
+useful bits of [distributional](https://pkg.mitchelloharawild.com/distributional/),
+[tidybayes](https://mjskay.github.io/tidybayes/), and [gganimate](https://gganimate.com/)
+along the way.
+
+## Setup
+
+```{r knitr_setup, include=FALSE}
+knitr::opts_chunk$set(
+  dev.args = list(png = list(type = "cairo"))
+)
+```
+
+These packages are needed:
+
+```{r setup, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(distributional)
+library(posterior)
+library(tidybayes)
+library(gganimate)
+
+# I am using the dev version of ggdist. You may need to use
+# devtools::install_github("mjskay/ggdist") to install it
+# if version 3.1 is not on CRAN when you are reading this:
+library(ggdist)
+
+theme_set(theme_ggdist())
+```
+
+
+## A single dataset
+
+### Generating the data
+
+Before jumping into `rvar`, let's simulate a single dataset the traditional
+way in R, using one of the `r` functions. For simplicity, we'll do 100 draws from
+a $\textrm{Normal}(0,1)$ distribution:
+
+```{r}
+set.seed(1234)  # for reproducibility
+
+n = 100
+x = rnorm(n, mean = 0, sd = 1)
+
+str(x)
+```
+
+Which we might visualize with a dotplot. We'll use `ggdist::geom_dots()`, which
+automatically picks a dot size so that the dotplot fits in the plot region:
+
+```{r}
+tibble(x = x) %>%
+  ggplot(aes(x = x)) +
+  geom_dots()
+```
+
+### Basic statistics
+
+If we wanted to we could calculate the mean, variance, and standard deviation of
+x as well:
+
+```{r}
+mean_x = mean(x)
+var_x = var(x)
+sd_x = sd(x)
+
+cat(sep = "",
+  "mean:     ", mean_x, "\n",
+  "variance: ", var_x, "\n",
+  "sd:       ", sd_x, "\n"
+)
+```
+
+We see that the values come out as approximately 0 and 1, as they should. 
+
+### P values
+
+If operating in a frequentist mode, we might also be interested in the outcome of 
+some statistical test; say a t-test for the null hypothesis that the mean is 0.
+In this case, since we generated the data, we *know* that the mean is 0, but once
+we generate many datasets like the one above we might be interested in whether or
+not this particular statistical test is well behaved (e.g. that its distribution
+of p values is uniform), so we'll demo calculating the p value in the individual
+case as well.
+
+First, we'll calculate the p value using `t.test()`, then we'll do it manually
+(as this will come in handy later).
+
+Using `t.test()`:
+
+```{r}
+t.test(x)
+```
+
+The p value itself is `t.test(x)$p.value`:
+
+```{r}
+pvalue = t.test(x)$p.value
+pvalue
+```
+
+We can also calculate this manually
+using the standard error of the mean, ($\textit{SE} = \textit{SD}/\textrm{sqrt}(n)$), and the degrees
+of freedom ($\textit{DF} = 1 - n$) along with a scaled-and-shifted Student's t distribution
+(provided by `ggdist::pstudent_t()` --- one could also manually scale and shift
+the standard Student's t distribution provided with `stats::pt()`, but I find
+the method below nicer because of its connection to confidence distributions):
+
+```{r}
+se_mean_x = sd_x / sqrt(n)
+df_x = n - 1
+
+2 * pstudent_t(-abs(mean_x), df = df_x, mu = 0, sigma = se_mean_x)
+```
+
+### Confidence intervals
+
+Speaking of confidence distributions, we could also use the confidence distribution
+for the mean to calculate the lower and upper bounds of a 95% confidence interval
+on the mean...
+
+```{r}
+confidence = 0.95
+alpha = 1 - confidence
+
+lower = qstudent_t(alpha/2, df = df_x, mu = mean_x, sigma = se_mean_x)
+upper = qstudent_t(confidence + alpha/2, df = df_x, mu = mean_x, sigma = se_mean_x)
+
+cat("95% CI for mean(x): [", lower, ",", upper, "]\n")
+```
+
+And then we can ask, is the true mean in the interval?
+
+```{r}
+zero_in_interval = lower <= 0 & 0 <= upper
+
+zero_in_interval
+```
+
+We lucked out this time: the true mean (zero) is in the interval. Of course,
+it might not have been --- given our data generating process, 5% of the time 
+the mean should be outside of intervals calculated this way.
+
+## A single dataset, many times
+
+Of course, if we're working in a frequentist mode, we'd really like to ask all
+of the above questions with the qualifier, "... if we repeated this a very large
+number of times." Then the questions become things like, "does the 95% CI
+contain the true mean 95% of the time?" and "are the p values uniformly distributed?"
+
+To do this in R, typically you will see people create large matrices or data 
+frames of many simulations from the same data generating process, and then
+summarize those objects down. Instead, for this demo we will use `posterior::rvar()` 
+objects, and attempt to keep the code as close as possible to looking like the 
+original code above.
+
+
+### Generating the data
+
+For the single dataset we used an `r` function, i.e. `rnorm()`, which is
+a built-in random number generator in R. 
+
+The [posterior](https://mc-stan.org/posterior/) package provides
+a way to generate random variable datatypes using the built-in `r` functions, by
+passing them as the first argument to `posterior::rvar_rng()`. The remaining arguments
+are passed to the underlying `r` function, except that instead of generating only 
+`n = 100` values, `rvar_rng()` will generate $n \times k$ values for some 
+value of `k` (by default `4000`, set by `options("posterior.rvar_ndraws")`) and 
+return the result as an `rvar()`.
+
+Thus, where before we had a `numeric` vector of length `100`, now we have an `rvar`
+vector of length `100`, with `4000` draws per element:
+
+```{r}
+set.seed(1234)  # for reproducibility
+
+n = 100
+# compare to before: x = rnorm(n, mean = 0, sd = 1)
+x = rvar_rng(rnorm, n, mean = 0, sd = 1)
+
+str(x)
+```
+
+We could visualize 100 datapoints from one version of `x` by using `unnest_rvars()` on
+a data frame containing x. This will return a long format data frame with a `.draw`
+column indexing the draws from `x`:
+
+```{r}
+tibble(x = x) %>%
+  tidybayes::unnest_rvars()
+```
+
+We can select one draw from `x`, which will consist of 100 rows (i.e. a single
+draw from the distribution of a 100-element vector), and visualize it with a dotplot
+as before:
+
+```{r}
+tibble(x = x) %>%
+  tidybayes::unnest_rvars() %>%
+  filter(.draw == 1) %>%
+  ggplot(aes(x = x)) +
+  geom_dots()
+```
+
+We could also use animation to see what several such 100-element vectors might
+look like, by selecting (say) 20 draws and using `gganimate::transition_manual()`
+to animate over them:
+
+```{r}
+p = tibble(x = x) %>%
+  tidybayes::unnest_rvars() %>%
+  filter(.draw <= 20) %>%
+  ggplot(aes(x = x)) +
+  geom_dots() +
+  gganimate::transition_manual(.draw)
+
+gganimate::animate(p, type = "cairo", width = 600, height = 400, res = 100)
+```
+
+### Basic statistics
+
+As before, we could calculate the mean, variance, and standard deviation of
+`x`. Except now, we can calculate these as random variables by using 
+`rvar_`-prefixed functions from `posterior`, yielding *distributions* of means,
+variances, and sds:
+
+```{r}
+mean_x = rvar_mean(x)
+var_x = rvar_var(x)
+sd_x = rvar_sd(x)
+
+cat(sep = "",
+  "mean:     ", format(mean_x), "\n",
+  "variance: ", format(var_x), "\n",
+  "sd:       ", format(sd_x), "\n"
+)
+```
+
+We see that the values come out as approximately 0 and 1, but now we can
+also see their uncertainty from repeated sampling. 
+
+We can visualize the three statistics using stats from the 
+[slab+interval](https://mjskay.github.io/ggdist/articles/slabinterval.html) 
+family of stats in {ggdist}. These stats (like `ggdist::stat_halfeye()`, below)
+accept `posterior::rvar()` objects on their `xdist` or `ydist` aesthetics,
+which are alternatives to `x` and `y` aesthetics that ggdist geoms can use with
+`rvar`s or [distributional](https://pkg.mitchelloharawild.com/distributional/) objects:
+
+```{r}
+tibble(
+  stat = c("mean", "var", "sd"),
+  value = c(mean_x, var_x, sd_x)
+) %>%
+  ggplot(aes(y = stat, xdist = value)) +
+  stat_halfeye()
+```
+
+In fact, we could even compare them against their theoretical distributions:
+
+- variance should be $\textrm{Gamma}(n/2, n/(2\sigma^2))$ using a shape, rate parameterization
+- standard deviation should be $\textrm{sqrt}(\textrm{Gamma}(n/2, n/(2\sigma^2)))$
+- mean should be $\textrm{Normal}(0, \sigma/\textrm{sqrt}(n))$
+
+We can construct all of the above distributions using [distributional](https://pkg.mitchelloharawild.com/distributional/) objects.
+For the distribution of the standard deviation, which is the square root of
+a Gamma distribution, we'll use `distributional::dist_transformed()`,
+which can construct a transformed distribution so long as you supply it with
+the transformation and its inverse:
+
+```{r}
+var_dist = dist_gamma(n/2, n/2)
+sd_dist = dist_transformed(var_dist, sqrt, inverse = \(x) x^2)
+mean_dist = dist_normal(0, 1/sqrt(n))
+```
+
+To make it easier to compare the theoretical distributions (`mean_dist`, ...) 
+and the sampled distributions (`mean_x`, ...), we'll create a data frame with a
+single list-column called `value` which contains both the theoretical distributional
+objects and the sampled `rvar`s:
+
+```{r}
+stat_comp_df = tibble(
+  stat = rep(c("mean", "var", "sd"), 2),
+  which = rep(c("theoretical", "sampled"), each = 3),
+  value = list(
+    mean_dist, var_dist, sd_dist,
+    mean_x, var_x, sd_x
+  )
+)
+
+stat_comp_df
+```
+
+We can then compare these in a single plot, as both distributional objects
+and `rvar`s (and lists of both) can be mapped onto `xdist` / `ydist` aesthetics
+in `ggdist`:
+
+```{r}
+stat_comp_df %>%
+  ggplot(aes(y = stat, xdist = value, color = which)) +
+  stat_slab(fill = NA, alpha = 0.5) 
+```
+
+And we can see that the sampling distributions of these three statistics
+match their theoretical distributions.
+
+### P values
+
+Calculating the p value for the null hypothesis that the mean is 0 as a random
+variable is a bit more complicated, because unlike mean (`rvar_mean()`) 
+or variance (`rvar_var()`), `posterior` does not already have functions to do
+this for us. We'll demonstrate two ways to solve the problem.
+
+#### The slow way
+
+The slow way would be to apply the `t.test()` function within every one of the
+4000 draws of `x` (each draw containing 100 data points). We can do this
+by using `rfun()`, which converts an existing function (which should return a
+`numeric` vector) into a function that can take `rvar` objects, applies itself over
+every draw of those objects, and returns a new `rvar` vector with the results:
+
+```{r}
+rvar_ttest = rfun(\(x) t.test(x)$p.value)
+
+pvalue = rvar_ttest(x)
+pvalue
+```
+
+As expected, the resulting distribution of p values is uniform:
+
+```{r}
+tibble(pvalue = pvalue) %>%
+  ggplot(aes(xdist = pvalue)) +
+  stat_histinterval()
+```
+
+In fact, this is probably easier to see with a cumulative distribution function (CDF),
+which will be a diagonal line if the distribution is uniform. We'll use
+`ggdist::stat_cdfinterval()` to plot the CDF.
+
+Note: we set `scale = 1` (the default is `0.9` to leave a bit of space between multiple
+geoms) and justification to `0` (the default is `0.5` to center the CDF on the
+interval). This will make the CDF go from 0 to 1 on the y axis and thus be comparable
+to the diagonal reference line.
+
+```{r}
+tibble(pvalue = pvalue) %>%
+  ggplot(aes(xdist = pvalue)) +
+  geom_abline(alpha = 0.5) +
+  stat_cdfinterval(scale = 1, justification = 0, slab_color = "red", alpha = 0.5)
+```
+
+As expected, the CDF of the p value is a diagonal line along `y = x` from 0 to 1,
+indicating that the distribution is $\textrm{Uniform(0, 1)}$.
+
+#### The fast way
+
+While `rfun()` works well for prototyping, it can be slow, because it cannot take
+advantage of vectorization to calculate its results. Instead, we could use the
+manual calculation of p values with `ggdist::pstudent_t()` that we used before,
+but apply it to a random variable representing the standard error of `x`.
+
+This approach is a bit trickier, as we will have to manipulate the matrix of
+draws that underlies the `rvar` objects. This can be accessed via `draws_of()`,
+which returns a matrix whose first dimension is draws from the random variable
+(in this case, `4000`).
+
+First, we calculate a random variable for the standard error, essentially the 
+same as with a single dataset, except now the result is an `rvar`:
+
+```{r}
+se_mean_x = sd_x / sqrt(n)
+se_mean_x
+```
+
+The draws underlying `se_mean_x` look like this:
+
+```{r}
+str(draws_of(se_mean_x))
+```
+
+We can use these draws and the draws from `mean_x` directly in a vectorized
+function like `ggdist::pstudent_t()` to create a new vector of draws, 
+which can be passed into `posterior::rvar()` to create a new random variable:
+
+```{r}
+df_x = n - 1
+
+# NOTE: this approach assumes that mean_x and se_mean_x are scalar rvars. If 
+# they are vectors this will not work correctly.
+pvalue_fast = rvar(
+  2 * pstudent_t(-abs(draws_of(mean_x)), df = df_x, mu = 0, sigma = draws_of(se_mean_x))
+)
+pvalue_fast
+```
+
+The result is the same as before.
+
+#### Comparing the slow and fast ways
+
+We can benchmark the two methods:
+
+```{r}
+bench::mark(
+  slow = rvar_ttest(x),
+  fast = rvar(
+    2 * pstudent_t(-abs(draws_of(mean_x)), df = df_x, mu = 0, sigma = draws_of(se_mean_x))
+  )
+)
+```
+
+The fast way is quite a bit faster!
+
+Since the fast way (vectorization of draws) involves more low-level manipulation
+than the slow way (`rfun()`), I recommend also checking to ensure the two give 
+equivalent results. Using direct comparison (`==`) is typically not that useful
+due to floating point rounding errors...
+
+```{r}
+pvalue == pvalue_fast
+```
+
+...so instead use `all.equal()`, which will compare the two `rvar`s with some
+tolerance for floating point errors:
+
+```{r}
+all.equal(pvalue, pvalue_fast)
+```
+
+(`bench::mark()` also checks for equality of the expressions it benchmarks, so it
+also would have caught any problems above.)
+
+### Confidence intervals
+
+Finally, we'll calculate confidence intervals within each of the 4000 draws of `x`.
+We'll again compare `rfun()` (the slow way) to manual manipulation of draws (the fast way).
+
+#### The slow way
+
+First, we'll create `rvar` versions of the `qstudent_t()` function:
+
+```{r}
+rvar_qstudent_t = rfun(qstudent_t)
+```
+
+Now we can apply it using code similar to what we did with the single dataset:
+
+```{r}
+confidence = 0.95
+alpha = 1 - confidence
+
+lower = rvar_qstudent_t(alpha/2, df = df_x, mu = mean_x, sigma = se_mean_x)
+upper = rvar_qstudent_t(confidence + alpha/2, df = df_x, mu = mean_x, sigma = se_mean_x)
+
+cat("95% CIs for mean(x): [", format(lower), ",", format(upper), "]\n")
+```
+
+As before, we can ask, is the true mean in the interval?
+
+```{r}
+zero_in_interval = lower <= 0 & 0 <= upper
+
+zero_in_interval
+```
+
+And we can see that it is 95% of the time. We could also calculate just this
+proportion using `mean()` (or `E()` or `Pr()`, which are aliases provided by
+`posterior`):
+
+```{r}
+Pr(zero_in_interval)
+```
+
+#### The fast way
+
+Finally, for completeness, the fast way:
+
+```{r}
+confidence = 0.95
+alpha = 1 - confidence
+
+fast_rvar_qstudent_t = function(..., mu, sigma) {
+  # NOTE: this assumes mu and sigma are scalar rvars. If they are vectors the
+  # result will be incorrect.
+  rvar(qstudent_t(..., mu = draws_of(mu), sigma = draws_of(sigma)))
+}
+
+lower_fast = fast_rvar_qstudent_t(alpha/2, df = df_x, mu = mean_x, sigma = se_mean_x)
+upper_fast = fast_rvar_qstudent_t(confidence + alpha/2, df = df_x, mu = mean_x, sigma = se_mean_x)
+
+cat("95% CIs for mean(x): [", format(lower_fast), ",", format(upper_fast), "]\n")
+```
+
+#### Comparing the slow and fast way
+
+Again, we can benchmark:
+
+```{r}
+bench::mark(
+  slow = rvar_qstudent_t(alpha/2, df = df_x, mu = mean_x, sigma = se_mean_x),
+  fast = fast_rvar_qstudent_t(alpha/2, df = df_x, mu = mean_x, sigma = se_mean_x)
+)
+```
+
+And double-check the results are the same:
+
+```{r}
+all.equal(lower, lower_fast)
+all.equal(upper, upper_fast)
+```
+
+## A more complex dataset, once
+
+The above example is a bit silly because it shows only one variable (`x`). Typical
+datasets are more complicated, often involving multiple predictors, etc.
+
+### Generating the data
+
+Let's do another example with a paired t test using repeated measures of `x` (one
+in condition `A` and one in condition `B`) on different *participants*. Each 
+participant will have an *offset* from the grand mean from which their observations
+are drawn. Something like:
+
+$x_{\textit{condition},\textit{participant}} \sim \textrm{Normal}(\textit{mean}_\textit{condition} + \textit{offset}_\textit{participant}, 1)$\
+$\textit{mean}_A = 0$\
+$\textit{mean}_B = 1$\
+$\textit{offset}_\textit{participant} \sim \textrm{Normal}(0, 0.5)$
+
+A single data frame generated from the above process might look like this:
+
+```{r}
+set.seed(1234)
+n_participant = 30
+offset_participant = rnorm(n_participant, mean = 0, sd = 0.5)
+
+df = tibble(
+  condition = rep(c("A", "B"), n_participant),
+  mean_condition = rep(c(0,1), n_participant),
+  participant = rep(1:n_participant, each = 2),
+  mean = mean_condition + offset_participant[participant],
+  x = rnorm(n_participant*2, mean, sd = 1)
+)
+
+df
+```
+
+Here are the observations, with light-blue lines connecting the same observation
+from each participant:
+
+```{r}
+df %>%
+  ggplot(aes(y = condition, x = x)) +
+  geom_line(aes(group = participant), alpha = 0.5, color = "skyblue") +
+  geom_dots(
+    aes(side = ifelse(condition == "A", "bottom", "top")),
+    height = 0.5, shape = 20, color = "skyblue"
+  ) +
+  stat_summary(fun = mean, aes(group = NA), geom = "line", size = 1)
+```
+
+### Confidence intervals
+
+Now, if we wanted a confidence interval on the paired differences between
+A and B, for a single dataset we could pivot it wider by `condition` and
+then calculate the difference:
+
+```{r}
+df_wide = df %>%
+  select(participant, condition, x) %>%
+  pivot_wider(names_from = condition, values_from = x) %>%
+  mutate(diff = B - A)
+
+df_wide
+```
+
+Then we could ask for a confidence interval on `diff`:
+
+```{r}
+sd_diff = sd(df_wide$diff)
+mean_diff = mean(df_wide$diff)
+se_mean_diff = sd_diff / sqrt(n_participant)
+df_diff = n_participant - 1
+
+confidence = 0.95
+alpha = 1 - confidence
+
+lower = qstudent_t(alpha/2, df = df_diff, mu = mean_diff, sigma = se_mean_diff)
+upper = qstudent_t(confidence + alpha/2, df = df_diff, mu = mean_diff, sigma = se_mean_diff)
+
+cat("95% CI for mean diff in x: [", lower, ",", upper, "]\n")
+```
+
+And see if the CI contains the true difference (1):
+
+```{r}
+diff_in_interval = lower <= 1 & 1 <= upper
+diff_in_interval
+```
+
+To check our work we could always use `t.test()` to do the calculation:
+
+```{r}
+t.test(df[df$condition == "B",]$x, df[df$condition == "A",]$x, paired = TRUE)
+```
+
+Which yields the same interval as before.
+
+## A more complex dataset, many times
+
+### Generating the data
+
+We can repeat the above single example many times simply by constructing a 
+data frame containing `rvar`s instead of numeric vectors. Where
+previously we used `rnorm(...)`, we would use `rvar_rng(rnorm, ...)`, but
+otherwise the code is the same.
+
+That looks like this:
+
+```{r}
+set.seed(1234)
+n_participant = 30
+offset_participant = rvar_rng(rnorm, n_participant, mean = 0, sd = 0.5)
+
+df = tibble(
+  condition = rep(c("A", "B"), n_participant),
+  mean_condition = rep(c(0,1), n_participant),
+  participant = rep(1:n_participant, each = 2),
+  mean = mean_condition + offset_participant[participant],
+  x = rvar_rng(rnorm, n_participant*2, mean, sd = 1)
+)
+
+df
+```
+
+Now we have a data frame the exact same shape as in the single simulation example,
+except the `mean` and `x` columns are `rvar`s, each containing 4000 draws from the
+distribution of possible `mean`s and `x`s.
+
+We can grab the observations from just one simulation by unnesting the `rvar` columns,
+using `tidybayes::unnest_rvars()`, which will return a long-format data frame:
+
+```{r}
+df %>%
+  tidybayes::unnest_rvars()
+```
+
+The `.draw` column indexes the same draw (simulation) across `mean` and `x`. In other
+words, all rows in this table with the same value of `.draw` come from a single draw
+from the joint distribution of `mean` and `x`. Thus, we can subset to a single draw
+in order to visualize a single simulation result.
+
+(We'll also add a new layer to this chart: a `stat_slab()` showing the distribution
+of the mean of `x` across draws):
+
+```{r}
+df %>%
+  tidybayes::unnest_rvars() %>%
+  filter(.draw == 1) %>%
+  ggplot(aes(y = condition, x = x)) +
+  geom_line(aes(group = participant), alpha = 0.5, color = "skyblue") +
+  stat_slab(
+    aes(
+      side = ifelse(condition == "A", "top", "bottom"),
+      x = NULL, xdist = x_mean, slab_alpha = stat(pdf)
+    ),
+    data = group_by(df, condition) %>% summarise(x_mean = rvar_mean(x)),
+    thickness = 1, height = 0.1, fill = "gray50", fill_type = "gradient",
+    show.legend = FALSE
+  ) +
+  geom_dots(
+    aes(side = ifelse(condition == "A", "bottom", "top")),
+    height = 0.5, shape = 20, color = "skyblue"
+  ) +
+  stat_summary(fun = mean, aes(group = NA), geom = "line", size = 1)
+```
+
+Or show a handful of simulations (here, just 20) using [gganimate](https://gganimate.com/) by
+adding `gganimate::transition_manual(.draw)`:
+
+```{r}
+p = df %>%
+  tidybayes::unnest_rvars() %>%
+  filter(.draw <= 20) %>%
+  ggplot(aes(y = condition, x = x)) +
+  geom_line(aes(group = participant), alpha = 0.5, color = "skyblue") +
+  stat_slab(
+    aes(
+      side = ifelse(condition == "A", "top", "bottom"),
+      x = NULL, xdist = x_mean, slab_alpha = stat(pdf)
+    ),
+    data = group_by(df, condition) %>% summarise(x_mean = rvar_mean(x)),
+    thickness = 1, height = 0.1, fill = "gray50", fill_type = "gradient",
+    show.legend = FALSE
+  ) +
+  geom_dots(
+    aes(side = ifelse(condition == "A", "bottom", "top")),
+    height = 0.5, shape = 20, color = "skyblue"
+  ) +
+  stat_summary(fun = mean, aes(group = NA), geom = "line", size = 1) +
+  gganimate::transition_manual(.draw)
+
+gganimate::animate(p, type = "cairo", width = 600, height = 400, res = 100)
+```
+
+
+### Confidence intervals
+
+As before, we can use `tidyr::pivot_wider()` to restructure the tibble
+(even with `rvar`s in it!) and then calculate the difference between conditions:
+
+```{r}
+df_wide = df %>%
+  select(participant, condition, x) %>%
+  pivot_wider(names_from = condition, values_from = x) %>%
+  mutate(diff = B - A)
+
+df_wide
+```
+
+#### The fast way
+
+We could ask for a confidence interval on `diff`, re-using the 
+`fast_rvar_qstudent_t()` function we made above. Thus we use `rvar_sd()`, `rvar_mean()`,
+and `fast_rvar_qstudent_t()` in place of `sd()`, `mean()`, and `qstudent_t()`, but
+do not need to change anything else:
+
+```{r}
+sd_diff = rvar_sd(df_wide$diff)
+mean_diff = rvar_mean(df_wide$diff)
+se_mean_diff = sd_diff / sqrt(n_participant)
+df_diff = n_participant - 1
+
+confidence = 0.95
+alpha = 1 - confidence
+
+lower = fast_rvar_qstudent_t(alpha/2, df = df_diff, mu = mean_diff, sigma = se_mean_diff)
+upper = fast_rvar_qstudent_t(confidence + alpha/2, df = df_diff, mu = mean_diff, sigma = se_mean_diff)
+
+cat("95% CI for mean diff in x: [", format(lower), ",", format(upper), "]\n")
+```
+
+As before, we can ask the probability that the true mean difference (1) is in the interval:
+
+```{r}
+Pr(lower <= 1 & 1 <= upper)
+```
+
+Which is approximately 95%, as it should be.
+
+To check our work we could always use `t.test()` to do the calculation. This
+would require using `rfun()`, which will be slower than the previous solution:
+
+```{r}
+rvar_ttest_ci = rfun(\(x, y, ...) t.test(x, y, ...)$conf.int)
+
+ci_slow = rvar_ttest_ci(df[df$condition == "B",]$x, df[df$condition == "A",]$x, paired = TRUE)
+
+cat("95% CI for mean diff in x: [", format(ci_slow[[1]]), ",", format(ci_slow[[2]]), "]\n")
+```
+
+And indeed the result is the same.
