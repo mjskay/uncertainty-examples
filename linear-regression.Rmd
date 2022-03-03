@@ -54,7 +54,7 @@ df
 ```{r fig.width = 5, fig.height = 5}
 df %>%
   ggplot(aes(x = x, y = y)) +
-  geom_point() 
+  geom_point()
 ```
 
 ```{r, results = "hide"}
@@ -128,15 +128,19 @@ df %>%
 
 #### Regression lines as animated HOPs
 
-```{r fig.width = 5, fig.height = 5}
-p = df %>%
-  add_fitted_draws(m, n = 100) %>%
-  ggplot(aes(x = x, y = .value)) +
-  geom_line(color = "#3573b9", size = 1) +
-  geom_point(aes(y = y), data = df) +
-  transition_manual(.draw)
+```{r hops_lines, fig.width = 5, fig.height = 5}
+nframes = 500
 
-animate(p, fps = 2.5, res = 100, width = 500, height = 500)
+p = df %>%
+  add_fitted_draws(m, n = nframes) %>%
+  ggplot(aes(x = x, y = .value)) +
+  geom_line(color = "red", size = 1) +
+  geom_point(aes(y = y), data = df) +
+  transition_manual(.draw) +
+  ylab("mu") +
+  cowplot::background_grid(minor = "xy")
+
+animate(p, fps = 2.5, res = 100, width = 500, height = 500, type = "cairo", nframes = nframes, renderer = ffmpeg_renderer(format = "mp4"))
 ```
 
 

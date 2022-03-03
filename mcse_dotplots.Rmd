@@ -76,7 +76,7 @@ mcse_dotplot = function(n = 500, annotate_mcse = TRUE) {
   
   df %>%
     ggplot(aes(y = 0, x = q, group = rep)) +
-    stat_dots(layout = "bins", alpha = 1/n_rep, color = NA) +
+    stat_dots(layout = "bin", alpha = 1/n_rep, color = NA) +
     (if (annotate_mcse) list(
       geom_line(
         aes(group = NA), y = 0.14, data = df %>% filter(dot == 1, rep %in% range(rep)),
@@ -126,17 +126,26 @@ mcse_histogram = function(
   set.seed(1234)
   x = rnorm(n)
   
+  se_mult = abs(qnorm(1/n_max_bin/2))
+  probs = ppoints(n_max_bin, a = 0.5)
+  
   df = tibble(
-      q_mean = quantile(x, probs = ppoints(n_max_bin)),
-      q_se = mcse_quantile(x, ppoints(n_max_bin), names = FALSE)
+      q_mean = quantile(x, probs = probs),
+      q_se = mcse_quantile(x, probs, names = FALSE)
     )
+  
+  if (all(is.na(df$q_se))) {
+    df$q_se = 1
+  } else {
+    df$q_se[is.na(df$q_se)] = min(df$q_se, na.rm = TRUE)
+  }
   
   # bin the quantiles based on which ones are within 2 SEs of each other
   next_split = -Inf
   bin = 0
   df$bin = sapply(seq_len(nrow(df)), function(i) {
     if (df$q_mean[[i]] > next_split) {
-      next_split <<- with(df[i,], q_mean + 2 * q_se)
+      next_split <<- with(df[i,], q_mean + se_mult * q_se)
       bin <<- bin + 1
     }
     bin
@@ -145,12 +154,11 @@ mcse_histogram = function(
   # Then we'll figure out non-overlapping boundaries between bins:
   df_bins = df %>%
     mutate(
-      lower = q_mean - 2 * q_se,
-      upper = q_mean + 2 * q_se,
+      lower = q_mean - se_mult * q_se,
+      upper = q_mean + se_mult * q_se,
     ) %>%
     group_by(bin) %>%
     summarise(
-      n = n(),
       lower = min(lower),
       upper = max(upper)
     ) %>%
@@ -161,22 +169,25 @@ mcse_histogram = function(
   
   # hack to make sure data is covered
   df_bins$adj_lower[[1]] = min(x, df_bins$adj_lower[[1]])
-  df_bins$adj_upper[[nrow(df_bins)]] = max(x, df_bins$adj_upper[[nrow(df_bins)]])
+  df_bins$adj_upper[[nrow(df_bins)]] = max(x, df_bins$adj_upper[[nrow(df_bins)]]) + .Machine$double.eps
   
   # Now we'll count how many data points in the sample are actually in these
   # bins to determine (1) densities and (2) actual bin boundaries:
   df_bins_densities = df_bins %>%
+    ungroup() %>%
     mutate(
       data = map2(adj_lower, adj_upper, ~ x[.x <= x & x < .y]),
-      n = lengths(data),
-      lower = sapply(data, min),
-      upper = sapply(data, max)
+      n_in_bin = lengths(data),
+      p = n_in_bin / n(),
+      # suppress warnings for min/max if bin is empty
+      lower = suppressWarnings(sapply(data, min)),
+      upper = suppressWarnings(sapply(data, max))
     ) %>%
     mutate(
       # make sure bin edges touch
       adj_lower = rowMeans(cbind(lag(upper), lower), na.rm = TRUE),
       adj_upper = rowMeans(cbind(upper, lead(lower)), na.rm = TRUE),
-      density = n / (adj_upper - adj_lower)
+      density = p / (adj_upper - adj_lower)
     )
   
   tibble(
@@ -184,8 +195,10 @@ mcse_histogram = function(
     x = with(df_bins_densities, as.vector(rbind(adj_lower, adj_lower, adj_upper, adj_upper))),
     density = with(df_bins_densities, as.vector(rbind(0, density, density, 0)))
   ) %>%
-    ggplot(aes(x = x, ymin = 0, ymax = density)) +
-    geom_ribbon(color = "white") +
+    ggplot(aes(x = x)) +
+    geom_ribbon(aes(ymin = 0, ymax = density), color = "gray75") +
+    geom_rug(data = data.frame(x)) +
+    # geom_function(fun = dnorm, color = "red") +
     labs(
       y = NULL,
       x = NULL,
@@ -210,3 +223,115 @@ row(500) /
   
 ```
 
+
+```{r}
+n = 500
+n_max_bin = 100
+
+set.seed(1234)
+# x = rbeta(n, 1, 8)
+x = rnorm(n)
+
+mcse_quantile_ = function(x, probs) {
+  se = mcse_quantile(x, probs, names = FALSE)
+  ifelse(is.na(se), 0, se)
+}
+
+se_mult = 2#abs(qnorm(1/20/2))
+probs = ppoints(n_max_bin, a = 0.9)
+qs = quantile(x, probs = probs)
+ses = mcse_quantile_(x, probs)
+
+current_prob = probs[[1]]
+current_q = qs[[1]]
+current_se = ses[[1]]
+current_n = 1
+selected_qs = double()
+selected_ses = double()
+for (i in seq_along(probs)[-1]) {
+  # diff_se = sqrt(current_se^2 + ses[[i]]^2)
+  # if ((qs[[i]] - current_q)/diff_se > se_mult) {
+  if (current_q + se_mult*current_se < qs[[i]] - se_mult*ses[[i]]) {
+    # new split
+    new_i = length(selected_qs) + 1
+    selected_qs[[new_i]] = current_q
+    selected_ses[[new_i]] = current_se
+    current_prob = probs[[i]]
+    current_q = qs[[i]]
+    current_se = ses[[i]]
+    current_n = 1
+  } else {
+    # no split => merge quantiles and calculate new se
+    current_prob = (current_prob * current_n + probs[[i]]) / (current_n + 1)
+    current_q = quantile(x, current_prob)
+    current_se = mcse_quantile_(x, current_prob)
+    current_n = current_n + 1
+  }
+}
+# final split
+new_i = length(selected_qs) + 1
+selected_qs[[new_i]] = current_q
+selected_ses[[new_i]] = current_se
+
+
+# Then we'll figure out non-overlapping boundaries between bins:
+lower = selected_qs - se_mult * selected_ses
+upper = selected_qs + se_mult * selected_ses
+adj_lower = rowMeans(cbind(lag(upper), lower), na.rm = TRUE)
+adj_upper = rowMeans(cbind(upper, lead(lower)), na.rm = TRUE)
+
+# hack to make sure data is covered
+adj_lower[[1]] = min(x, adj_lower)
+adj_upper[[length(adj_upper)]] = max(x, adj_upper) + .Machine$double.eps * 2
+
+
+# Now we'll count how many data points in the sample are actually in these
+# bins to determine (1) densities and (2) actual bin boundaries:
+data_in_bin = map2(adj_lower, adj_upper, ~ x[.x <= x & x < .y])
+n_in_bin = lengths(data_in_bin)
+# suppress warnings for min/max if bin is empty
+lower = suppressWarnings(sapply(data_in_bin, min))
+upper = suppressWarnings(sapply(data_in_bin, max))
+# make sure bin edges touch
+adj_lower = rowMeans(cbind(lag(upper), lower), na.rm = TRUE)
+adj_upper = rowMeans(cbind(upper, lead(lower)), na.rm = TRUE)
+# make sure bin edges are finite
+adj_lower = ifelse(adj_lower == -Inf, min(x), adj_lower)
+adj_upper = ifelse(adj_lower == Inf, max(x), adj_upper)
+density = n_in_bin / (adj_upper - adj_lower) / n
+
+hist_plot = tibble(
+  # interleave lower and upper to draw histograms edges
+  x = as.vector(rbind(adj_lower, adj_lower, adj_upper, adj_upper)),
+  density = as.vector(rbind(0, density, density, 0))
+  # x = as.vector(rbind(adj_lower, adj_upper)),
+  # density = as.vector(rbind(density, density))
+) %>%
+  ggplot(aes(x = x)) +
+  geom_ribbon(aes(ymin = 0, ymax = density), color = "gray75") +
+  geom_rug(data = data.frame(x)) +
+  # geom_function(fun = ~ dbeta(.x, 1, 8), color = "red") +
+  geom_function(fun = dnorm, color = "red") +
+  labs(
+    y = NULL,
+    x = NULL,
+    subtitle = paste0("Sample size = ", n, ", max bins = ", n_max_bin)
+  ) +
+  coord_cartesian(xlim = c(-3.5, 3.5)) +
+  # coord_cartesian(xlim = c(0, 1)) +
+  scale_y_continuous(breaks = NULL)
+
+q_plot = tibble(
+    i = seq_along(selected_qs), 
+    q = selected_qs, 
+    se = selected_ses,
+  ) %>% 
+  ggplot(aes(x = q)) + 
+  geom_segment(aes(y = 0, yend = max(i) + 1, xend = q), color = "gray75") +
+  geom_linerange(aes(y = i, xmin = q - se_mult*se, xmax = q + se_mult*se), size = 0.5) +
+  geom_rug(data = data.frame(q = qs)) +
+  coord_cartesian(xlim = c(-3.5, 3.5))
+  # coord_cartesian(xlim = c(0, 1))
+
+hist_plot / q_plot
+```
