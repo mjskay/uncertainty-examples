@@ -1,0 +1,180 @@
+---
+title: "Untitled"
+author: "Matthew Kay"
+date: "2/27/2022"
+output: html_document
+---
+
+```{r setup}
+library(ggplot2)
+library(dplyr)
+library(ggdist)
+library(distributional)
+
+theme_set(theme_ggdist())
+```
+
+This is a quick experiment / comparison of two different approaches to making gradients, particularly for `stat_lineribbon()`.
+
+Our general goal is to use the density to make gradients:
+
+```{r}
+density_plot = tibble(
+  x = seq(-4, 4, length.out = 201),
+  d = dnorm(x)  
+) %>%
+  ggplot(aes(x, d)) +
+  geom_line() +
+  coord_cartesian(expand = FALSE, clip = "off")
+
+density_plot
+```
+
+We want to find evenly-spaced values of densities at which to create intervals, so that
+we can string a bunch of intervals together into a band.
+
+We'll pick them to be in the interval `(0, max(dnorm(x)))`, where `max(dnorm(x))` = `dnorm(0)`:
+
+```{r}
+k = 20 # number of points
+d = ppoints(k, a = 0) * dnorm(0)
+
+density_plot +
+  geom_hline(yintercept = d, alpha = 0.2)
+```
+
+To find the x positions corresponding to those density values, we
+need the inverse of the Normal density function, which is (plus or minus):
+
+```{r}
+inv_dnorm = function(d) {
+  sqrt(-2*log(d) - log(2) - log(pi))
+}
+```
+
+Then we can find the corresponding x values:
+
+```{r}
+x = inv_dnorm(d)
+
+density_plot +
+  geom_hline(yintercept = d, alpha = 0.2) +
+  geom_segment(aes(x = x, xend = x, y = 0, yend = d), data = data.frame(x, d), alpha = 0.5)
+```
+
+Now we can use these x values to determine the width of the corresponding quantile
+intervals that would have those x values as their upper limits:
+
+```{r}
+w = 1 - (1 - pnorm(x))*2
+
+density_plot +
+  geom_hline(yintercept = d, alpha = 0.2) +
+  stat_interval(aes(xdist = dist, y = 0, x = NULL), .width = w, data = data.frame(dist = dist_normal()), height = 0.05) +
+  geom_segment(aes(x = x, xend = x, y = 0, yend = d), data = data.frame(x, d), alpha = 0.5) +
+  scale_color_viridis_d(guide = "none")
+```
+
+Putting this together into a single function:
+
+```{r}
+inv_dnorm = function(d) {
+  sqrt(-2*log(d) - log(2) - log(pi))
+}
+
+density_widths = function(n) {
+  pp = ppoints(n, a = 0)
+  d = pp * dnorm(0)
+  x = inv_dnorm(d)
+  2*pnorm(x) - 1
+}
+```
+
+Or this alternative definition that simplifies the calculation a bit:
+
+```{r}
+density_widths = function(n) {
+  pp = ppoints(n, a = 0)
+  
+  # this is equivalent to:
+  # d = pp * dnorm(0)
+  # x = inv_dnorm(d)
+  x = sqrt(-2 * log(pp))
+  
+  2*pnorm(x) - 1
+}
+
+```
+
+We want to color according the the density at the endpoints of the interval, hence the use of `mapply(density, xdist, xmin)` here:
+
+```{r}
+density_plot +
+  geom_hline(yintercept = d, alpha = 0.2) +
+  stat_interval(aes(xdist = dist, y = 0, x = NULL, color = stat(mapply(density, xdist, xmin))), .width = density_widths(100), data = data.frame(dist = dist_normal()), height = 0.05) +
+  geom_segment(aes(x = x, xend = x, y = 0, yend = d), data = data.frame(x, d), alpha = 0.5) +
+  scale_color_distiller()
+
+```
+
+Now we'll do the same with a lineribbon. Here's a distribution of lines:
+
+```{r}
+set.seed(1234)
+n = 5000
+
+df = tibble(
+  .draw = 1:n,
+  intercept = rnorm(n, 3, 1),
+  slope = rnorm(n, 1, 0.25),
+  x = list(-4:5),
+  y = map2(intercept, slope, ~ .x + .y * -4:5)
+) %>%
+  unnest(c(x, y))
+```
+
+We can do the classic lineribbon gradient by giving a large number of values of `ppoints()`, but the
+colors in this case will map onto quantile interval probabilities (essentially, a transformation of the CDF)
+whereas we want the color to map onto densities:
+
+```{r}
+df %>%
+  ggplot(aes(x, y)) +
+  stat_ribbon(aes(fill_ramp = stat(.width)), .width = ppoints(100), fill = "#2171b5") +
+  scale_fill_ramp_continuous(range = c(1, 0), guide = "none") +
+  coord_cartesian(ylim = c(-5, 15))
+```
+
+Notice how the gradient looks sharp in the middle even without the median line drawn.
+This is because the CDF will also have a sharp peak at the median.
+
+We can instead use the Normal approximation to the density at a given width to encode
+the approximate density in color:
+
+```{r}
+# parameterize by `dist` in case we wanted to use a different distribution for the approximation
+density_for_width = function(w, dist = "norm", ...) {
+  quantile_fun = match.fun(paste0("q", dist))
+  density_fun = match.fun(paste0("d", dist))
+  (density_fun(quantile_fun(0.5 - w/2, ...), ...) + density_fun(quantile_fun(0.5 + w/2, ...), ...))/2
+}
+
+
+df %>%
+  ggplot(aes(x, y)) +
+  stat_ribbon(aes(fill_ramp = stat(density_for_width(.width))), .width = density_widths(100), fill = "#2171b5") +
+  scale_fill_ramp_continuous(guide = "none") +
+  coord_cartesian(ylim = c(-5, 15))
+```
+
+This should better match what we would get if we used `stat_gradientinterval()`, which
+directly encodes the density on color (except for the difference that gradientinterval
+does not map the max density conditional on x onto the same color, and of course the
+discontinuities between x values):
+
+```{r}
+df %>%
+  ggplot(aes(x, y)) +
+  stat_gradientinterval(fill = "#2171b5", color = NA, fill_type = "gradient", scale = 1) +
+  coord_cartesian(ylim = c(-5, 15))
+```
