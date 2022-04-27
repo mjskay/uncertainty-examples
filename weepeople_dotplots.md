@@ -7,7 +7,8 @@ Matthew Kay
 
 This demo shows the use of the [Wee People
 font](https://github.com/propublica/weepeople) from ProPublica with
-`geom_dots()` from [ggdist](https:://mjskay.github.io/ggdist). It is
+`geom_dots()` from [ggdist](https:://mjskay.github.io/ggdist). The idea
+of using Wee People with dotplots comes from @gdbassett, and the code is
 based on [@hrbrmstr’s example
 code](https://twitter.com/hrbrmstr/status/1363241620527808514?s=20&t=Dz0e9sEqPYg8d5J5_37fDQ)
 for using custom fonts in ggplot.
