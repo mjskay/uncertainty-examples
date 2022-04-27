@@ -2,9 +2,12 @@
 title: "Multivariate regression"
 output:
   github_document:
-    dev: CairoPNG
     toc: true
 ---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
+```
 
 
 ## Setup
@@ -19,9 +22,8 @@ library(rstan)
 library(brms)
 library(modelr)
 library(tidybayes)
-library(ggridges)
 library(colorspace)
-library(patchwork)  # devtools::install_github("thomasp85/patchwork")
+library(patchwork)
 
 theme_set(theme_light())
 rstan_options(auto_write = TRUE)
@@ -149,7 +151,7 @@ rescor_plot_heat = m %>%
   ylab("correlation") +
   xlab(NULL) +
   scale_x_continuous(breaks = NULL) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  scale_fill_distiller(type = "div", palette = "RdBu", limits = c(-1, 1), guide = "none") +
   facet_grid(.row ~ .col)
 
 data_plot + rescor_plot_heat
@@ -194,26 +196,35 @@ m_large = brm(mvbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large, file 
 
 ### Density version
 
-I've dropped the intervals for this (they start to become illegible) and did a few other minor tweaks for clarity:
+The real goal here is to create a "micro-macro" reading. The advantage of the original heatmap
+is the "macro" reading: you can step back from the plot and see the "big picture" of the
+pattern of correlations in each cell, but you can't see uncertainty. The "micro" reading
+is details of the uncertainty in each cell, which the heatmap does not support.
+
+Here we'll try to make it easy to see the big picture using densities (actually, violins / eye plots -
+I find the symmetry helps in the case) colored according to the correlation color scale. This
+gives us a "micro" reading, and then the average color of the eye in a cell is the average correlation
+value. I also added a subtle white line for 0 on top to make the difference between positive and
+negative correlations a bit easier to see:
 
 ```{r, fig.width = 12, fig.height = 6, warning = FALSE, message = FALSE}
 rescor_plot_heat_large = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
   ggplot(aes(y = .value, x = 0)) +
-  stat_slab(aes(fill = stat(y)), fill_type = "gradient") +
-  geom_hline(yintercept = 0, color = "white", size = 1) +
+  geom_hline(yintercept = 0, color = "gray95", size = 1, alpha = 0.75, linetype = "11") +
+  stat_halfeye(aes(fill = stat(y)), fill_type = "gradient", side = "both", color = alpha("black", 0.2), point_size = 1) +
   ylab("correlation") +
   xlab(NULL) +
   scale_x_continuous(breaks = NULL) +
   scale_y_continuous(breaks = NULL, limits = c(-1, 1)) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
-  facet_grid(.row ~ .col)
+  scale_fill_distiller(type = "div", palette = "RdBu", limits = c(-1, 1), guide = "none") +
+  facet_grid(.row ~ .col) 
 
-data_plot_large + rescor_plot_heat_large
+(data_plot_large + rescor_plot_heat_large) &
+  theme(panel.spacing = unit(0, "pt"))
 ```
 
-You can still pick out the high/low correlations by color, though it isn't quite as easy.
 
 ### Dither approach
 
@@ -237,8 +248,7 @@ rescor_plot_heat_dither = m_large %>%
   ggplot(aes(x, y, fill = .value)) +
   geom_raster() +
   facet_grid(.row ~ .col) +
-  # scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "corr.") +
+  scale_fill_distiller(type = "div", palette = "RdBu", limits = c(-1, 1), name = "corr.") +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
   xlab(NULL) +
@@ -256,20 +266,16 @@ Going back to densities, what if the point estimate is used to set the cell back
 rescor_plot_heat_large = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
-  ggplot(aes(x = .value, y = 0)) +
-  geom_tile(aes(x = 0, y = 0.5, width = 2, height = 1, fill = .value),
+  ggplot(aes(y = .value, x = 0)) +
+  geom_tile(aes(y = 0, x = 0.5, width = 1, height = 2, fill = .value),
     data = function(df) df %>% group_by(.row, .col) %>% median_qi(.value)) +
-  geom_density_ridges_gradient(aes(height = stat(ndensity), fill = stat(x)), color = NA, scale = 1) +
-  geom_vline(xintercept = 0, color = "white", alpha = .5) +
-  geom_density_ridges(aes(height = stat(ndensity)), fill = NA, color = "gray50", scale = 1) +
-  xlim(c(-1, 1)) +
-  xlab("correlation") +
-  ylab(NULL) +
-  scale_y_continuous(breaks = NULL) +
-  scale_x_continuous(breaks = NULL) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
-  coord_flip(expand = FALSE) +
-  facet_grid(.row ~ .col)
+  stat_slab(aes(fill = stat(y)), normalize = "groups", scale = 1, color = alpha("black", 0.2), fill_type = "gradient") +
+  geom_hline(yintercept = 0, color = "white", alpha = .25, size = 1) +
+  scale_y_continuous(name = NULL, breaks = NULL, limits = c(-1, 1)) +
+  scale_x_continuous(name = "correlation", breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", limits = c(-1, 1), guide = "none") +
+  facet_grid(.row ~ .col) +
+  coord_cartesian(expand = FALSE)
 
 data_plot_large + rescor_plot_heat_large
 ```
@@ -292,7 +298,7 @@ rescor_plot_heat_large = m_large %>%
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = "none") +
   coord_flip(expand = FALSE) +
   facet_grid(.row ~ .col)
 
@@ -312,7 +318,7 @@ data.frame(x = 0) %>%
   ggplot(aes(x = .x, y = .y)) +
   stat_density_2d(alpha = 1/15, fill = "#08519C", geom = "polygon") +
   geom_point(data = df_large %>% gather_variables() %>% gather_pairs(.variable, .value), size = .5, pch = 20) +
-  scale_fill_distiller(direction = 1, guide = FALSE) +
+  scale_fill_distiller(direction = 1, guide = "none") +
   facet_grid(.row ~ .col)
 ```
 
@@ -320,7 +326,7 @@ data.frame(x = 0) %>%
 
 To demo some other useful `tidybayes` features, particularly on nested data, let's code up a version of the multivariate regression model directly in Stan that expects the outcome variable `Y` to be a vector:
 
-```{stan, output.var = "mv_stanmodel"}
+```{stan, output.var = "mv_stanmodel", eval = FALSE}
 data {
   int<lower=1> n;            // number of observations
   int<lower=1> n_responses;  // number of response variables
@@ -351,7 +357,7 @@ generated quantities {
 
 We'll use a modified version of the dataset that has the data nested into a `Y` variable as well:
 
-```{r}
+```{r eval = FALSE}
 nested_df = df %>%
   transmute(Y = pmap(list(y1, y2, y3), c))
 
@@ -360,7 +366,7 @@ nested_df
 
 We'll also keep the long-form paired version of the dataset around since it will be useful for plotting:
 
-```{r}
+```{r eval = FALSE}
 paired_df = df %>%
   gather(.variable, .value) %>%
   gather_pairs(.variable, .value) 
@@ -373,14 +379,14 @@ paired_df %>%
 
 To prepare the data for modeling, we can use `compose_data()`, which will appropriately handle the nested `Y` column for us, generate the `n` column, and let us easily generate an `n_responses` column (the number of responses in each vector in `Y`):
 
-```{r}
+```{r eval = FALSE}
 data_for_stan = nested_df %>%
   compose_data(n_responses = length(Y[[1]]))
 ```
 
 Then we can fit the model:
 
-```{r}
+```{r eval = FALSE}
 mv = sampling(mv_stanmodel, data = data_for_stan, chains = 4, iter = 5000)
 ```
 
@@ -388,7 +394,7 @@ mv = sampling(mv_stanmodel, data = data_for_stan, chains = 4, iter = 5000)
 
 What we'd really like to be able to do is easily make use of the `Mu` vector and `Sigma` matrix from the posterior draws. The latest version of `tidybayes` now supports extracting variables as *nested* list columns: any dimension you specify as a `.` is nested into the resulting data frame rather than being moved into a separate column. For example:
 
-```{r}
+```{r eval = FALSE}
 mv %>%
   spread_draws(Mu[.], Sigma[.,.]) %>%
   head(10)
@@ -396,7 +402,7 @@ mv %>%
 
 This means we can use the `map()` family of functions from `purrr` to directly make use of posterior draws from the `Mu` vector and the `Sigma` covariance matrix; for example, we can generate posterior predictions by taking draws from a multivariate normal simply by passing `Mu` and `Sigma` onto the existing `MASS::mvrnorm()` function without much additional fuss:
 
-```{r fig.width = 7, fig.height = 6}
+```{r fig.width = 7, fig.height = 6, eval = FALSE}
 mv %>%
   spread_draws(Mu[.], Sigma[.,.]) %>%
   mutate(
@@ -408,13 +414,13 @@ mv %>%
   ggplot(aes(x = .x, y = .y)) +
   stat_bin_hex(bins = 25) +
   geom_point(data = paired_df, pch = 21, fill = "white") +
-  scale_fill_distiller(direction = 1, guide = FALSE) +
+  scale_fill_distiller(direction = 1, guide = "none") +
   facet_grid(.row ~ .col)
 ```
 
 We could also show something from the means at the same time:
 
-```{r fig.width = 7, fig.height = 6}
+```{r fig.width = 7, fig.height = 6, eval = FALSE}
 draws = mv %>%
   spread_draws(Mu[.], Sigma[.,.]) %>%
   mutate(
@@ -436,6 +442,6 @@ predictions %>%
   stat_ellipse(data = means) +
   stat_ellipse(data = means, level = .66) +
   geom_point(data = paired_df, pch = 21, fill = "white") +
-  scale_fill_distiller(direction = 1, guide = FALSE) +
+  scale_fill_distiller(direction = 1, guide = "none") +
   facet_grid(.row ~ .col)
 ```

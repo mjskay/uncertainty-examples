@@ -1,22 +1,22 @@
 Multivariate regression
 ================
 
-  - [Setup](#setup)
-      - [Data](#data)
-      - [Data plot](#data-plot)
-      - [Model](#model)
-      - [Correlations from the model](#correlations-from-the-model)
-      - [Altogether](#altogether)
-      - [Or side-by-side](#or-side-by-side)
-      - [More heatmap-y](#more-heatmap-y)
-  - [Okay, but does it scale?](#okay-but-does-it-scale)
-      - [Density version](#density-version)
-      - [Dither approach](#dither-approach)
-      - [Densities with heatmaps?](#densities-with-heatmaps)
-  - [The no-uncertainty heatmap](#the-no-uncertainty-heatmap)
-  - [Posterior predictions](#posterior-predictions)
-  - [The directly-in-Stan model](#the-directly-in-stan-model)
-      - [Posterior predictions](#posterior-predictions-1)
+-   [Setup](#setup)
+    -   [Data](#data)
+    -   [Data plot](#data-plot)
+    -   [Model](#model)
+    -   [Correlations from the model](#correlations-from-the-model)
+    -   [Altogether](#altogether)
+    -   [Or side-by-side](#or-side-by-side)
+    -   [More heatmap-y](#more-heatmap-y)
+-   [Okay, but does it scale?](#okay-but-does-it-scale)
+    -   [Density version](#density-version)
+    -   [Dither approach](#dither-approach)
+    -   [Densities with heatmaps?](#densities-with-heatmaps)
+-   [The no-uncertainty heatmap](#the-no-uncertainty-heatmap)
+-   [Posterior predictions](#posterior-predictions)
+-   [The directly-in-Stan model](#the-directly-in-stan-model)
+    -   [Posterior predictions](#posterior-predictions-1)
 
 ## Setup
 
@@ -30,9 +30,8 @@ library(rstan)
 library(brms)
 library(modelr)
 library(tidybayes)
-library(ggridges)
 library(colorspace)
-library(patchwork)  # devtools::install_github("thomasp85/patchwork")
+library(patchwork)
 
 theme_set(theme_light())
 rstan_options(auto_write = TRUE)
@@ -62,19 +61,13 @@ df %>%
   facet_grid(.row ~ .col)
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
 ### Model
 
 ``` r
-m = brm(mvbind(y1, y2, y3) ~ 0 + intercept, data = df)
+m = brm(mvbind(y1, y2, y3) ~ 0 + intercept, data = df, file = "multivariate-regression_files/model.rds")
 ```
-
-    ## Setting 'rescor' to TRUE by default for this model
-
-    ## Compiling the C++ model
-
-    ## Start sampling
 
 ### Correlations from the model
 
@@ -85,14 +78,14 @@ m %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".row", ".col"), sep = "__") %>%
   ggplot(aes(x = .value, y = 0)) +
-  geom_halfeyeh() +
+  stat_halfeye() +
   xlim(c(-1, 1)) +
   xlab("rescor") +
   ylab(NULL) +
   facet_grid(.row ~ .col)
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
 ### Altogether
 
@@ -121,7 +114,11 @@ df %>%
   facet_grid(.row ~ .col)
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+    ## Warning: 'geom_halfeyeh' is deprecated.
+    ## Use 'stat_halfeye' instead.
+    ## See help("Deprecated") and help("tidybayes-deprecated").
+
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
 ### Or side-by-side
 
@@ -154,44 +151,44 @@ rescor_plot = m %>%
   facet_grid(.row ~ .col) +
   xlab("correlation") +
   scale_y_continuous(breaks = NULL) 
+```
 
+    ## Warning: 'geom_halfeyeh' is deprecated.
+    ## Use 'stat_halfeye' instead.
+    ## See help("Deprecated") and help("tidybayes-deprecated").
+
+``` r
 data_plot + rescor_plot
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
 ### More heatmap-y
 
 Some other things possibly worth improving:
 
-  - adding a color encoding back in for that high-level gist
-  - making “up” be positive correlation and “down” be negative
-  - 0 line
-
-<!-- end list -->
+-   adding a color encoding back in for that high-level gist
+-   making “up” be positive correlation and “down” be negative
+-   0 line
 
 ``` r
 rescor_plot_heat = m %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
-  ggplot(aes(x = .value, y = 0)) +
-  geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
-  geom_vline(xintercept = 0, color = "gray65", linetype = "dashed") +
-  stat_pointintervalh() +
-  xlim(c(-1, 1)) +
-  xlab("correlation") +
-  ylab(NULL) +
-  scale_y_continuous(breaks = NULL) +
-  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_continuous_diverging(palette = "Blue-Yellow 2", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
-  coord_flip() +
+  ggplot(aes(y = .value, x = 0)) +
+  stat_halfeye(aes(fill = stat(y)), fill_type = "gradient") +
+  geom_hline(yintercept = 0, color = "gray65", linetype = "dashed") +
+  ylim(c(-1, 1)) +
+  ylab("correlation") +
+  xlab(NULL) +
+  scale_x_continuous(breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", limits = c(-1, 1), guide = "none") +
   facet_grid(.row ~ .col)
 
 data_plot + rescor_plot_heat
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 ## Okay, but does it scale?
 
@@ -226,47 +223,47 @@ data_plot_large = df_large %>%
 data_plot_large
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
 ``` r
-m_large = brm(mvbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large)
+m_large = brm(mvbind(y1, y2, y3, y4, y5, y6, y7, y8) ~ 1, data = df_large, file = "multivariate-regression_files/model_large.rds")
 ```
-
-    ## Setting 'rescor' to TRUE by default for this model
-
-    ## Compiling the C++ model
-
-    ## Start sampling
 
 ### Density version
 
-I’ve dropped the intervals for this (they start to become illegible) and
-did a few other minor tweaks for clarity:
+The real goal here is to create a “micro-macro” reading. The advantage
+of the original heatmap is the “macro” reading: you can step back from
+the plot and see the “big picture” of the pattern of correlations in
+each cell, but you can’t see uncertainty. The “micro” reading is details
+of the uncertainty in each cell, which the heatmap does not support.
+
+Here we’ll try to make it easy to see the big picture using densities
+(actually, violins / eye plots - I find the symmetry helps in the case)
+colored according to the correlation color scale. This gives us a
+“micro” reading, and then the average color of the eye in a cell is the
+average correlation value. I also added a subtle white line for 0 on top
+to make the difference between positive and negative correlations a bit
+easier to see:
 
 ``` r
 rescor_plot_heat_large = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
-  ggplot(aes(x = .value, y = 0)) +
-  geom_density_ridges_gradient(aes(fill = stat(x)), color = NA) +
-  geom_vline(xintercept = 0, color = "white", size = 1) +
-  xlim(c(-1, 1)) +
-  xlab("correlation") +
-  ylab(NULL) +
-  scale_y_continuous(breaks = NULL) +
+  ggplot(aes(y = .value, x = 0)) +
+  geom_hline(yintercept = 0, color = "gray95", size = 1, alpha = 0.75, linetype = "11") +
+  stat_halfeye(aes(fill = stat(y)), fill_type = "gradient", side = "both", color = alpha("black", 0.2), point_size = 1) +
+  ylab("correlation") +
+  xlab(NULL) +
   scale_x_continuous(breaks = NULL) +
-  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
-  coord_flip() +
-  facet_grid(.row ~ .col)
+  scale_y_continuous(breaks = NULL, limits = c(-1, 1)) +
+  scale_fill_distiller(type = "div", palette = "RdBu", limits = c(-1, 1), guide = "none") +
+  facet_grid(.row ~ .col) 
 
-data_plot_large + rescor_plot_heat_large
+(data_plot_large + rescor_plot_heat_large) &
+  theme(panel.spacing = unit(0, "pt"))
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
-
-You can still pick out the high/low correlations by color, though it
-isn’t quite as easy.
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
 ### Dither approach
 
@@ -289,15 +286,14 @@ rescor_plot_heat_dither = m_large %>%
   summarise(
     .value = list(sample(.value, w * h)),
     x = list(rep(1:w, times = h)),
-    y = list(rep(1:h, each = w))
+    y = list(rep(1:h, each = w)),
+    .groups = "drop_last"
   ) %>%
-  unnest() %>%
+  unnest(cols = c(.value, x, y)) %>%
   ggplot(aes(x, y, fill = .value)) +
   geom_raster() +
   facet_grid(.row ~ .col) +
-  scale_fill_continuous_diverging(palette = "Green-Brown", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_continuous_diverging(palette = "Blue-Yellow 2", limits = c(-1, 1), guide = FALSE) +
-  #scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), name = "corr.") +
+  scale_fill_distiller(type = "div", palette = "RdBu", limits = c(-1, 1), name = "corr.") +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
   xlab(NULL) +
@@ -307,7 +303,7 @@ rescor_plot_heat_dither = m_large %>%
 data_plot_large + rescor_plot_heat_dither
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
 ### Densities with heatmaps?
 
@@ -319,25 +315,21 @@ gist while retaining its more accurate depiction of the uncertainty:
 rescor_plot_heat_large = m_large %>%
   gather_draws(`rescor.*`, regex = TRUE) %>%
   separate(.variable, c(".rescor", ".col", ".row"), sep = "__") %>%
-  ggplot(aes(x = .value, y = 0)) +
-  geom_tile(aes(x = 0, y = 0.5, width = 2, height = 1, fill = .value),
+  ggplot(aes(y = .value, x = 0)) +
+  geom_tile(aes(y = 0, x = 0.5, width = 1, height = 2, fill = .value),
     data = function(df) df %>% group_by(.row, .col) %>% median_qi(.value)) +
-  geom_density_ridges_gradient(aes(height = stat(ndensity), fill = stat(x)), color = NA, scale = 1) +
-  geom_vline(xintercept = 0, color = "white", alpha = .5) +
-  geom_density_ridges(aes(height = stat(ndensity)), fill = NA, color = "gray50", scale = 1) +
-  xlim(c(-1, 1)) +
-  xlab("correlation") +
-  ylab(NULL) +
-  scale_y_continuous(breaks = NULL) +
-  scale_x_continuous(breaks = NULL) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
-  coord_flip(expand = FALSE) +
-  facet_grid(.row ~ .col)
+  stat_slab(aes(fill = stat(y)), normalize = "groups", scale = 1, color = alpha("black", 0.2), fill_type = "gradient") +
+  geom_hline(yintercept = 0, color = "white", alpha = .25, size = 1) +
+  scale_y_continuous(name = NULL, breaks = NULL, limits = c(-1, 1)) +
+  scale_x_continuous(name = "correlation", breaks = NULL) +
+  scale_fill_distiller(type = "div", palette = "RdBu", limits = c(-1, 1), guide = "none") +
+  facet_grid(.row ~ .col) +
+  coord_cartesian(expand = FALSE)
 
 data_plot_large + rescor_plot_heat_large
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
 This is, admittedly, a bit weird…
 
@@ -357,14 +349,14 @@ rescor_plot_heat_large = m_large %>%
   ylab(NULL) +
   scale_y_continuous(breaks = NULL) +
   scale_x_continuous(breaks = NULL) +
-  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = FALSE) +
+  scale_fill_distiller(type = "div", palette = "RdBu", direction = 1, limits = c(-1, 1), guide = "none") +
   coord_flip(expand = FALSE) +
   facet_grid(.row ~ .col)
 
 data_plot_large + rescor_plot_heat_large
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 ## Posterior predictions
 
@@ -379,11 +371,11 @@ data.frame(x = 0) %>%
   ggplot(aes(x = .x, y = .y)) +
   stat_density_2d(alpha = 1/15, fill = "#08519C", geom = "polygon") +
   geom_point(data = df_large %>% gather_variables() %>% gather_pairs(.variable, .value), size = .5, pch = 20) +
-  scale_fill_distiller(direction = 1, guide = FALSE) +
+  scale_fill_distiller(direction = 1, guide = "none") +
   facet_grid(.row ~ .col)
 ```
 
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+![](multivariate-regression_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
 
 ## The directly-in-Stan model
 
@@ -430,30 +422,6 @@ nested_df = df %>%
 nested_df
 ```
 
-    ## # A tibble: 20 x 1
-    ##    Y        
-    ##    <list>   
-    ##  1 <dbl [3]>
-    ##  2 <dbl [3]>
-    ##  3 <dbl [3]>
-    ##  4 <dbl [3]>
-    ##  5 <dbl [3]>
-    ##  6 <dbl [3]>
-    ##  7 <dbl [3]>
-    ##  8 <dbl [3]>
-    ##  9 <dbl [3]>
-    ## 10 <dbl [3]>
-    ## 11 <dbl [3]>
-    ## 12 <dbl [3]>
-    ## 13 <dbl [3]>
-    ## 14 <dbl [3]>
-    ## 15 <dbl [3]>
-    ## 16 <dbl [3]>
-    ## 17 <dbl [3]>
-    ## 18 <dbl [3]>
-    ## 19 <dbl [3]>
-    ## 20 <dbl [3]>
-
 We’ll also keep the long-form paired version of the dataset around since
 it will be useful for plotting:
 
@@ -467,8 +435,6 @@ paired_df %>%
   geom_point() +
   facet_grid(.row ~ .col)
 ```
-
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
 
 To prepare the data for modeling, we can use `compose_data()`, which
 will appropriately handle the nested `Y` column for us, generate the `n`
@@ -500,20 +466,6 @@ mv %>%
   head(10)
 ```
 
-    ## # A tibble: 10 x 5
-    ##    .chain .iteration .draw Mu        Sigma            
-    ##     <int>      <int> <int> <list>    <list>           
-    ##  1      1          1     1 <dbl [3]> <dbl[,3] [3 x 3]>
-    ##  2      1          2     2 <dbl [3]> <dbl[,3] [3 x 3]>
-    ##  3      1          3     3 <dbl [3]> <dbl[,3] [3 x 3]>
-    ##  4      1          4     4 <dbl [3]> <dbl[,3] [3 x 3]>
-    ##  5      1          5     5 <dbl [3]> <dbl[,3] [3 x 3]>
-    ##  6      1          6     6 <dbl [3]> <dbl[,3] [3 x 3]>
-    ##  7      1          7     7 <dbl [3]> <dbl[,3] [3 x 3]>
-    ##  8      1          8     8 <dbl [3]> <dbl[,3] [3 x 3]>
-    ##  9      1          9     9 <dbl [3]> <dbl[,3] [3 x 3]>
-    ## 10      1         10    10 <dbl [3]> <dbl[,3] [3 x 3]>
-
 This means we can use the `map()` family of functions from `purrr` to
 directly make use of posterior draws from the `Mu` vector and the
 `Sigma` covariance matrix; for example, we can generate posterior
@@ -533,11 +485,9 @@ mv %>%
   ggplot(aes(x = .x, y = .y)) +
   stat_bin_hex(bins = 25) +
   geom_point(data = paired_df, pch = 21, fill = "white") +
-  scale_fill_distiller(direction = 1, guide = FALSE) +
+  scale_fill_distiller(direction = 1, guide = "none") +
   facet_grid(.row ~ .col)
 ```
-
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
 
 We could also show something from the means at the same time:
 
@@ -563,8 +513,6 @@ predictions %>%
   stat_ellipse(data = means) +
   stat_ellipse(data = means, level = .66) +
   geom_point(data = paired_df, pch = 21, fill = "white") +
-  scale_fill_distiller(direction = 1, guide = FALSE) +
+  scale_fill_distiller(direction = 1, guide = "none") +
   facet_grid(.row ~ .col)
 ```
-
-![](multivariate-regression_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
