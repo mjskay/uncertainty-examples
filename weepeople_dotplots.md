@@ -78,7 +78,7 @@ df |>
   scale_shape_manual(values = people, guide = "none")
 ```
 
-![](weepeople_dotplots_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+<img src="weepeople_dotplots_files/figure-gfm/unnamed-chunk-5-1.png" width="672" />
 
 Notice how the people are spaced out horizontally. This is because
 compared to normal dots, which have a square aspect ratio, they are
@@ -95,19 +95,19 @@ df |>
   scale_shape_manual(values = people, guide = "none")
 ```
 
-![](weepeople_dotplots_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+<img src="weepeople_dotplots_files/figure-gfm/unnamed-chunk-6-1.png" width="672" />
 
 We can also make it feel a bit more organic using the `"swarm"` layout:
 
 ``` r
 df |>
   ggplot(aes(x = x, y = set, group = set, shape = icon, color = x > 0)) + 
-  geom_dots(family = "weepeople", dotsize = 2.4, layout = "swarm") + 
+  geom_dots(family = "weepeople", dotsize = 2.4, layout = "swarm", binwidth = 0.145) + 
   scale_shape_manual(values = people, guide = "none") +
   scale_color_brewer(palette = "Set1", guide = "none")
 ```
 
-![](weepeople_dotplots_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+<img src="weepeople_dotplots_files/figure-gfm/unnamed-chunk-7-1.png" width="672" />
 
 For completeness, an example with an analytical distribution using
 `stat_dots()`:
@@ -119,4 +119,14 @@ data.frame(x = distributional::dist_normal(0,1)) |>
   scale_shape_manual(values = people, guide = "none")
 ```
 
-![](weepeople_dotplots_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+<img src="weepeople_dotplots_files/figure-gfm/unnamed-chunk-8-1.png" width="672" />
+
+``` r
+df |>
+  ggplot(aes(x = x, y = set, group = set, shape = x > 0)) + 
+  geom_dots(layout = "swarm", binwidth = 0.145) + 
+  scale_shape_manual(values = c("💩", "😃"), guide = "none") +
+  scale_color_brewer(palette = "Set1", guide = "none")
+```
+
+<img src="weepeople_dotplots_files/figure-gfm/unnamed-chunk-9-1.png" width="672" />
