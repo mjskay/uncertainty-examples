@@ -36,7 +36,7 @@ df = data.frame(x = c("a","b"), y = rlnorm(100, c(0, 1), c(0.5, 0.25)))
 
 It looks like this:
 
-```{r}
+```{r data}
 df |>
   ggplot(aes(y = x, x = y)) +
   geom_point()
@@ -85,7 +85,7 @@ That is, $M$ is the mean of a lognormal distribution with parameters $\mu$ and $
 
 We could ask for the posterior for the variables in the model:
 
-```{r}
+```{r params}
 m |>
   gather_draws(`b_.*`, regex = TRUE) |>
   ggplot(aes(x = .value, y = .variable)) +
@@ -150,7 +150,7 @@ Here we have:
 
 We could also plot these:
 
-```{r}
+```{r linpred}
 plot_mu = df |>
   ggplot(aes(y = x)) +
   stat_halfeye(aes(xdist = mu), data = df_linpred_trans) +
@@ -200,7 +200,7 @@ Here we have:
 We can compare this against the observed data and see the distribution roughly matches the distribution of observed data (it better! the
 model type we fit is the same as the model type used to generate the data):
 
-```{r}
+```{r pred}
 plot_pred = df |>
   ggplot(aes(y = x)) +
   stat_halfeye(aes(xdist = y_new), data = df_pred, fill = "#1b9e77", point_interval = mean_qi, position = position_nudge(y = 0.1), scale = 0.5) +
@@ -237,7 +237,7 @@ df_epred
 
 Plotting this with the data:
 
-```{r}
+```{r epred_pred}
 plot_epred_pred = plot_pred +
   stat_halfeye(aes(xdist = M), data = df_epred, fill = "#d95f02", point_interval = mean_qi, position = position_nudge(y = -0.1), side = "bottom", scale = 0.5) +
   annotate("text", y = 1.85, x = 3.5, label = "distribution of the expectation of the posterior predictive\np(M|x_new,y) where M = E(y_new|mu,sigma)\nposterior_epred()", color = "#d95f02", hjust = 0, vjust = 1, lineheight = 1)

@@ -33,7 +33,7 @@ df |>
   geom_point()
 ```
 
-<img src="linpred_epred_files/figure-gfm/unnamed-chunk-3-1.png" width="672" />
+<img src="linpred_epred_files/figure-gfm/data-1.png" width="672" />
 
 ## Model
 
@@ -102,7 +102,7 @@ m |>
   stat_halfeye()
 ```
 
-<img src="linpred_epred_files/figure-gfm/unnamed-chunk-5-1.png" width="672" />
+<img src="linpred_epred_files/figure-gfm/params-1.png" width="672" />
 
 Here we have:
 
@@ -239,7 +239,7 @@ plot_mu + plot_sigma + plot_log_sigma +
   )
 ```
 
-<img src="linpred_epred_files/figure-gfm/unnamed-chunk-8-1.png" width="672" />
+<img src="linpred_epred_files/figure-gfm/linpred-1.png" width="672" />
 
 We can see that while `log(sigma)` is unconstrained, `sigma` must always
 be positive.
@@ -300,7 +300,7 @@ plot_pred +
   ggtitle("Posterior predictive distribution (posterior_predict)")
 ```
 
-<img src="linpred_epred_files/figure-gfm/unnamed-chunk-10-1.png" width="672" />
+<img src="linpred_epred_files/figure-gfm/pred-1.png" width="672" />
 
 Notice that these means do not match up with the values of
 ![\mu](https://latex.codecogs.com/png.image?%5Cdpi%7B110%7D&space;%5Cbg_white&space;%5Cmu "\mu"),
@@ -359,4 +359,4 @@ plot_epred_pred +
   )
 ```
 
-<img src="linpred_epred_files/figure-gfm/unnamed-chunk-12-1.png" width="672" />
+<img src="linpred_epred_files/figure-gfm/epred_pred-1.png" width="672" />
