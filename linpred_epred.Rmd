@@ -154,7 +154,7 @@ We could also plot these:
 plot_mu = df |>
   ggplot(aes(y = x)) +
   stat_halfeye(aes(xdist = mu), data = df_linpred_trans) +
-  xlab("mu\n(transform = TRUE)")
+  xlab("mu\n(transform = TRUE or FALSE)")
 
 plot_sigma = df |>
   ggplot(aes(y = x)) +
