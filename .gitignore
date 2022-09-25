@@ -4,3 +4,4 @@
 *.Rproj*
 *_cache/
 .Rproj.user
+linpred_epred_m.rds

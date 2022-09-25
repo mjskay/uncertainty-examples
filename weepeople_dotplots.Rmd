@@ -125,14 +125,14 @@ data.frame(x = distributional::dist_normal(0,1)) |>
 Bonus: emoji dotplots using {ragg}
 
 ```{r}
-ragg::agg_png("test.png", width = 3000, height = 2000, res = 300)
+ragg::agg_png("weepeople_dotplots_files/emoji-ragg.png", width = 1344, height = 960, res = 200)
 print(df |>
   ggplot(aes(x = x, y = set, group = set, color = x > 0)) + 
   geom_dots(aes(shape = x > 0), layout = "weave", dotsize = 0.9, stackratio = 1.1, fill = NA, position = position_nudge(x = 0.07)) + 
-  # geom_dots(layout = "swarm", dotsize = 0.9, stackratio = 1.1, fill = NA) +
   scale_shape_manual(values = c("💩", "😺"), guide = "none") +
   scale_color_brewer(palette = "Set1", guide = "none")) +
   geom_vline(xintercept = 0)
 dev.off()
 ```
 
+![](weepeople_dotplots_files/emoji-ragg.png)

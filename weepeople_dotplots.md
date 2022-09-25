@@ -102,7 +102,7 @@ We can also make it feel a bit more organic using the `"swarm"` layout:
 ``` r
 df |>
   ggplot(aes(x = x, y = set, group = set, shape = icon, color = x > 0)) + 
-  geom_dots(family = "weepeople", dotsize = 2.4, layout = "swarm", binwidth = 0.145) + 
+  geom_dots(family = "weepeople", dotsize = 2.4, layout = "swarm")+#, binwidth = 0.145) + 
   scale_shape_manual(values = people, guide = "none") +
   scale_color_brewer(palette = "Set1", guide = "none")
 ```
@@ -121,12 +121,22 @@ data.frame(x = distributional::dist_normal(0,1)) |>
 
 <img src="weepeople_dotplots_files/figure-gfm/unnamed-chunk-8-1.png" width="672" />
 
+## Bonus
+
+Bonus: emoji dotplots using {ragg}
+
 ``` r
-df |>
-  ggplot(aes(x = x, y = set, group = set, shape = x > 0)) + 
-  geom_dots(layout = "swarm", binwidth = 0.145) + 
-  scale_shape_manual(values = c("💩", "😃"), guide = "none") +
-  scale_color_brewer(palette = "Set1", guide = "none")
+ragg::agg_png("weepeople_dotplots_files/emoji-ragg.png", width = 1344, height = 960, res = 200)
+print(df |>
+  ggplot(aes(x = x, y = set, group = set, color = x > 0)) + 
+  geom_dots(aes(shape = x > 0), layout = "weave", dotsize = 0.9, stackratio = 1.1, fill = NA, position = position_nudge(x = 0.07)) + 
+  scale_shape_manual(values = c("💩", "😺"), guide = "none") +
+  scale_color_brewer(palette = "Set1", guide = "none")) +
+  geom_vline(xintercept = 0)
+dev.off()
 ```
 
-<img src="weepeople_dotplots_files/figure-gfm/unnamed-chunk-9-1.png" width="672" />
+    ## png 
+    ##   2
+
+![](weepeople_dotplots_files/emoji-ragg.png)
