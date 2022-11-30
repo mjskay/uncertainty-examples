@@ -13,6 +13,10 @@ library(rstanarm)
 theme_set(theme_ggdist())
 ```
 
+N.B. this is an attempt to think through some ideas from [this Twitter
+thread](https://twitter.com/adamjnafa/status/1597504851420024832), **DO
+NOT take it as authoritative**.
+
 ## Data
 
 Let’s generate some data from a population with one predictor (`x`)
@@ -66,7 +70,7 @@ df |>
   scale_y_continuous(limits = c(0, 1))
 ```
 
-![](marginal-mean-logit_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+![](marginal-mean-logit_files/figure-gfm/data-1.png)<!-- -->
 
 Let’s fit a model:
 
@@ -119,20 +123,16 @@ mean_equal_df |>
   )
 ```
 
-![](marginal-mean-logit_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+![](marginal-mean-logit_files/figure-gfm/mean_equal-1.png)<!-- -->
 
 Note how this leads to a biased result because we assumed
 `Pr(x = x1) = 0.5` yet it is actually 0.7. This makes sense if we think
 about what we’re doing mathematically, which is something like:
 
 $$
-\newcommand{\E}{\mathrm{E}}
-\newcommand{\Xequal}{X_\mathrm{equal}}
-\newcommand{\Xobs}{X_\mathrm{obs}}
-\newcommand{\Xsim}{\tilde{X}}
 \begin{eqnarray}
-\E_{\Xequal}(Y) &=& \E(Y|\Xequal = 0)\cdot \Pr(\Xequal = 0) + \E(Y|\Xequal = 1)\cdot \Pr(\Xequal = 1)\\
-&=& \E(Y|\Xequal = 0) \cdot 0.5 + \E(Y|\Xequal = 1) \cdot 0.5
+\E_{X_\mathrm{equal}}(Y) &=& \E(Y|X_\mathrm{equal} = 0)\cdot \Pr(X_\mathrm{equal} = 0) + \E(Y|X_\mathrm{equal} = 1)\cdot \Pr(X_\mathrm{equal} = 1)\\
+&=& \E(Y|X_\mathrm{equal} = 0) \cdot 0.5 + \E(Y|X_\mathrm{equal} = 1) \cdot 0.5
 \end{eqnarray}
 $$
 
@@ -171,39 +171,39 @@ mean_sample_df |>
   )
 ```
 
-![](marginal-mean-logit_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+![](marginal-mean-logit_files/figure-gfm/mean_sample-1.png)<!-- -->
 
 Now we have a more sensible estimate, but I would bet that the coverage
 is not nominal if we checked its calibration — because we used the
 sample proportion for `x == x1`, which is 0.775, instead of the true
 proportion, which is 0.7.
 
-In essence, if we observed $\Xobs$, we are now doing:
+In essence, if we observed $X_\mathrm{obs}$, we are now doing:
 
 $$
 \begin{eqnarray}
-\E_{\Xobs}(Y) &=& \E(Y|\Xobs = 0)\cdot \Pr(\Xobs = 0) + \E(Y|\Xobs = 1)\cdot \Pr(\Xobs = 1)\\
+\E_{X_\mathrm{obs}}(Y) &=& \E(Y|X_\mathrm{obs} = 0)\cdot \Pr(X_\mathrm{obs} = 0) + \E(Y|X_\mathrm{obs} = 1)\cdot \Pr(X_\mathrm{obs} = 1)\\
 \end{eqnarray}
 $$
 
-Yet there is uncertainty in $\Xobs$ as an approximation of the
+Yet there is uncertainty in $X_\mathrm{obs}$ as an approximation of the
 population $X$, and this uncertainty is not propogated in the above
 equation.
 
 ### Using a model of the population x
 
 What we really want to do is have some approximation of the population
-$X$ that incorporates uncertainty, say $\Xsim$. Then we can do something
-like:
+$X$ that incorporates uncertainty, say $\tilde{X}$. Then we can do
+something like:
 
 $$
 \begin{eqnarray}
-\E_{\Xsim}(Y) &=& \E(Y|\Xsim = 0)\cdot \Pr(\Xsim = 0) + \E(Y|\Xsim = 1)\cdot \Pr(\Xsim = 1)\\
+\E_{\tilde{X}}(Y) &=& \E(Y|\tilde{X} = 0)\cdot \Pr(\tilde{X} = 0) + \E(Y|\tilde{X} = 1)\cdot \Pr(\tilde{X} = 1)\\
 \end{eqnarray}
 $$
 
-We could use bootstrapping to generate samples from $\Xsim$, but I’ll be
-Lazy (TM) and just use a Beta-binomial model of proportions with
+We could use bootstrapping to generate samples from $\tilde{X}$, but
+I’ll be Lazy (TM) and just use a Beta-binomial model of proportions with
 Jeffreys’ prior, since it is easy to calculate:
 
 ``` r
@@ -219,9 +219,9 @@ ggplot() +
   )
 ```
 
-![](marginal-mean-logit_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](marginal-mean-logit_files/figure-gfm/X_sim-1.png)<!-- -->
 
-Now lets marginalize over $\Xsim$:
+Now lets marginalize over $\tilde{X}$:
 
 ``` r
 mean_sim_df = df |>
@@ -248,7 +248,7 @@ mean_sim_df |>
   )
 ```
 
-![](marginal-mean-logit_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+![](marginal-mean-logit_files/figure-gfm/mean_sim-1.png)<!-- -->
 
 ### Comparing the methods
 
@@ -267,4 +267,4 @@ bind_rows(
   )
 ```
 
-![](marginal-mean-logit_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+![](marginal-mean-logit_files/figure-gfm/comparison-1.png)<!-- -->

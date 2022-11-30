@@ -46,7 +46,7 @@ df
 
 Visualizing the data (compared to the true value in red):
 
-```{r}
+```{r data}
 df |>
   group_by(x) |>
   summarize(p_y1_obs = mean(y)) |>
@@ -74,7 +74,7 @@ m
 If we want the marginal mean for `Pr(y == 1)`, we can do a few things. One is
 calculate it assuming equal proportions of the two categories:
 
-```{r}
+```{r mean_equal}
 mean_equal_df = df |>
   tidyr::expand(x) |>
   add_epred_draws(m) |>
@@ -99,13 +99,9 @@ is actually 0.7. This makes sense if we think about what we're doing mathematica
 which is something like:
 
 $$
-\newcommand{\E}{\mathrm{E}}
-\newcommand{\Xequal}{X_\mathrm{equal}}
-\newcommand{\Xobs}{X_\mathrm{obs}}
-\newcommand{\Xsim}{\tilde{X}}
 \begin{eqnarray}
-\E_{\Xequal}(Y) &=& \E(Y|\Xequal = 0)\cdot \Pr(\Xequal = 0) + \E(Y|\Xequal = 1)\cdot \Pr(\Xequal = 1)\\
-&=& \E(Y|\Xequal = 0) \cdot 0.5 + \E(Y|\Xequal = 1) \cdot 0.5
+\E_{X_\mathrm{equal}}(Y) &=& \E(Y|X_\mathrm{equal} = 0)\cdot \Pr(X_\mathrm{equal} = 0) + \E(Y|X_\mathrm{equal} = 1)\cdot \Pr(X_\mathrm{equal} = 1)\\
+&=& \E(Y|X_\mathrm{equal} = 0) \cdot 0.5 + \E(Y|X_\mathrm{equal} = 1) \cdot 0.5
 \end{eqnarray}
 $$
 
@@ -121,7 +117,7 @@ proportions are:
 prop.table(table(df$x))
 ```
 
-```{r}
+```{r mean_sample}
 mean_sample_df = df |>
   add_epred_draws(m) |>
   # marginalize out x, using sample proportions of x
@@ -145,33 +141,33 @@ nominal if we checked its calibration --- because we used the sample proportion 
 `x == x1`, which is `r prop.table(table(df$x))["x1"]`, instead of the true proportion,
 which is `r p_x1`. 
 
-In essence, if we observed $\Xobs$, we are now doing:
+In essence, if we observed $X_\mathrm{obs}$, we are now doing:
 
 $$
 \begin{eqnarray}
-\E_{\Xobs}(Y) &=& \E(Y|\Xobs = 0)\cdot \Pr(\Xobs = 0) + \E(Y|\Xobs = 1)\cdot \Pr(\Xobs = 1)\\
+\E_{X_\mathrm{obs}}(Y) &=& \E(Y|X_\mathrm{obs} = 0)\cdot \Pr(X_\mathrm{obs} = 0) + \E(Y|X_\mathrm{obs} = 1)\cdot \Pr(X_\mathrm{obs} = 1)\\
 \end{eqnarray}
 $$
 
-Yet there is uncertainty in $\Xobs$ as an approximation of the population $X$, and
+Yet there is uncertainty in $X_\mathrm{obs}$ as an approximation of the population $X$, and
 this uncertainty is not propogated in the above equation.
 
 ### Using a model of the population x
 
 What we really want to do is have some approximation of the population $X$ that
-incorporates uncertainty, say $\Xsim$. Then we can do something like:
+incorporates uncertainty, say $\tilde{X}$. Then we can do something like:
 
 $$
 \begin{eqnarray}
-\E_{\Xsim}(Y) &=& \E(Y|\Xsim = 0)\cdot \Pr(\Xsim = 0) + \E(Y|\Xsim = 1)\cdot \Pr(\Xsim = 1)\\
+\E_{\tilde{X}}(Y) &=& \E(Y|\tilde{X} = 0)\cdot \Pr(\tilde{X} = 0) + \E(Y|\tilde{X} = 1)\cdot \Pr(\tilde{X} = 1)\\
 \end{eqnarray}
 $$
 
-We could use bootstrapping to generate samples from $\Xsim$, but I'll be Lazy (TM) and
+We could use bootstrapping to generate samples from $\tilde{X}$, but I'll be Lazy (TM) and
 just use a Beta-binomial model of proportions with Jeffreys' prior, since it is
 easy to calculate:
 
-```{r}
+```{r X_sim}
 x_alpha = 0.5 + table(df$x)["x1"]
 x_beta = 0.5 + table(df$x)["x0"]
 
@@ -184,10 +180,10 @@ ggplot() +
   )
 ```
 
-Now lets marginalize over $\Xsim$:
+Now lets marginalize over $\tilde{X}$:
 
 
-```{r}
+```{r mean_sim}
 mean_sim_df = df |>
   tidyr::expand(x) |>
   add_epred_draws(m) |>
@@ -214,7 +210,7 @@ mean_sim_df |>
 
 ### Comparing the methods
 
-```{r}
+```{r comparison}
 bind_rows(
   mean_equal_df,
   mean_sample_df,
