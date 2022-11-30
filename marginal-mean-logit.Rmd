@@ -1,0 +1,231 @@
+---
+title: "Marginalizing logit models"
+author: "Matthew Kay"
+date: "2022-11-29"
+output: github_document
+---
+
+
+```{r setup, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(distributional)
+library(ggdist)
+library(tidybayes)
+library(rstanarm)
+
+theme_set(theme_ggdist())
+```
+
+N.B. this is an attempt to think through some ideas from [this Twitter thread](https://twitter.com/adamjnafa/status/1597504851420024832), **DO NOT take it as authoritative**.
+
+## Data
+
+Let's generate some data from a population with one predictor (`x`) having two categories in
+whose relative proportion is not 50-50, and one response variable (`y`) whose
+outcome probability depends on `x`:
+
+```{r}
+p_x1 = 0.7
+p_y1 = c(
+  x0 = 0.3,
+  x1 = 0.8
+)
+
+# thus the marginal P(y == 1) is...
+marginal_p_y1 = p_y1[["x0"]] * (1 - p_x1) + p_y1[["x1"]] * p_x1
+
+set.seed(1234)
+n = 40
+df = tibble(
+  x = paste0("x", rbinom(n, 1, p_x1)),
+  y = rbinom(n, 1, p_y1[x])
+)
+
+df
+```
+
+Visualizing the data (compared to the true value in red):
+
+```{r}
+df |>
+  group_by(x) |>
+  summarize(p_y1_obs = mean(y)) |>
+  ggplot(aes(x = x, y = p_y1_obs)) +
+  geom_point(aes(y = p_y1[x]), pch = "-", color = "red", size = 6) +
+  geom_point() +
+  scale_y_continuous(limits = c(0, 1))
+```
+
+Let's fit a model:
+
+```{r results='hide'}
+m = stan_glm(y ~ x, data = df, family = binomial)
+```
+
+
+```{r}
+m
+```
+
+## Marginal means
+
+### Assuming equal probabilities of predictors
+
+If we want the marginal mean for `Pr(y == 1)`, we can do a few things. One is
+calculate it assuming equal proportions of the two categories:
+
+```{r}
+mean_equal_df = df |>
+  tidyr::expand(x) |>
+  add_epred_draws(m) |>
+  # marginalize out x, where P(x1) == P(x2) == 0.5
+  group_by(.draw) |>
+  summarise(.epred = mean(.epred)) |>
+  mutate(method = "equal prob")
+
+mean_equal_df |>
+  ggplot(aes(x = .epred)) +
+  stat_halfeye() +
+  geom_vline(xintercept = marginal_p_y1) +
+  xlim(c(0,1)) +
+  labs(
+    title = "Estimate of Pr(Y = 1)",
+    subtitle = "Assuming Pr(X = 1) = 0.5"
+  )
+```
+
+Note how this leads to a biased result because we assumed `Pr(x = x1) = 0.5` yet it 
+is actually 0.7. This makes sense if we think about what we're doing mathematically,
+which is something like:
+
+$$
+\newcommand{\E}{\mathrm{E}}
+\newcommand{\Xequal}{X_\mathrm{equal}}
+\newcommand{\Xobs}{X_\mathrm{obs}}
+\newcommand{\Xsim}{\tilde{X}}
+\begin{eqnarray}
+\E_{\Xequal}(Y) &=& \E(Y|\Xequal = 0)\cdot \Pr(\Xequal = 0) + \E(Y|\Xequal = 1)\cdot \Pr(\Xequal = 1)\\
+&=& \E(Y|\Xequal = 0) \cdot 0.5 + \E(Y|\Xequal = 1) \cdot 0.5
+\end{eqnarray}
+$$
+
+When we want to be marginalizing (ideally) over $X$, i.e. the population distribution of `x`, not
+an assumed $X_equal$.
+
+### Using sample proportions of predictors
+
+We could assume sample proportions of predictors reflects the population. The sample
+proportions are:
+
+```{r}
+prop.table(table(df$x))
+```
+
+```{r}
+mean_sample_df = df |>
+  add_epred_draws(m) |>
+  # marginalize out x, using sample proportions of x
+  group_by(.draw) |>
+  summarise(.epred = mean(.epred)) |>
+  mutate(method = "sample prob")
+
+mean_sample_df |>
+  ggplot(aes(x = .epred)) +
+  stat_halfeye() +
+  geom_vline(xintercept = marginal_p_y1) +
+  xlim(c(0,1)) +
+  labs(
+    title = "Estimate of Pr(Y = 1)",
+    subtitle = "Assuming Pr(X = 1) = Pr(X_obs = 1) (observed proportion in sample)"
+  )
+```
+
+Now we have a more sensible estimate, but I would bet that the coverage is not
+nominal if we checked its calibration --- because we used the sample proportion for
+`x == x1`, which is `r prop.table(table(df$x))["x1"]`, instead of the true proportion,
+which is `r p_x1`. 
+
+In essence, if we observed $\Xobs$, we are now doing:
+
+$$
+\begin{eqnarray}
+\E_{\Xobs}(Y) &=& \E(Y|\Xobs = 0)\cdot \Pr(\Xobs = 0) + \E(Y|\Xobs = 1)\cdot \Pr(\Xobs = 1)\\
+\end{eqnarray}
+$$
+
+Yet there is uncertainty in $\Xobs$ as an approximation of the population $X$, and
+this uncertainty is not propogated in the above equation.
+
+### Using a model of the population x
+
+What we really want to do is have some approximation of the population $X$ that
+incorporates uncertainty, say $\Xsim$. Then we can do something like:
+
+$$
+\begin{eqnarray}
+\E_{\Xsim}(Y) &=& \E(Y|\Xsim = 0)\cdot \Pr(\Xsim = 0) + \E(Y|\Xsim = 1)\cdot \Pr(\Xsim = 1)\\
+\end{eqnarray}
+$$
+
+We could use bootstrapping to generate samples from $\Xsim$, but I'll be Lazy (TM) and
+just use a Beta-binomial model of proportions with Jeffreys' prior, since it is
+easy to calculate:
+
+```{r}
+x_alpha = 0.5 + table(df$x)["x1"]
+x_beta = 0.5 + table(df$x)["x0"]
+
+ggplot() +
+  stat_halfeye(aes(xdist = dist_beta(x_alpha, x_beta))) +
+  geom_vline(xintercept = p_x1) +
+  labs(
+    title = "Estimate of population Pr(X = x1)",
+    subtitle = "Marginalizing over X_sim (estimate of population X distribution)"
+  )
+```
+
+Now lets marginalize over $\Xsim$:
+
+
+```{r}
+mean_sim_df = df |>
+  tidyr::expand(x) |>
+  add_epred_draws(m) |>
+  # generate a distribution of Pr(X_sim = x) values
+  mutate(
+    p_x1 = rbeta(n(), x_alpha, x_beta),
+    p_x = ifelse(x == "x1", p_x1, 1 - p_x1)
+  ) |>
+  group_by(.draw) |>
+  # marginalize out X_sim
+  summarise(.epred = weighted.mean(.epred, p_x)) |>
+  mutate(method = "estimated pop prob")
+
+mean_sim_df |>
+  ggplot(aes(x = .epred)) +
+  stat_halfeye() +
+  geom_vline(xintercept = marginal_p_y1) +
+  xlim(c(0,1)) +
+  labs(
+    title = "Estimate of Pr(Y = 1)",
+    subtitle = "Using estimate of population Pr(X = 1) with uncertainty"
+  )
+```
+
+### Comparing the methods
+
+```{r}
+bind_rows(
+  mean_equal_df,
+  mean_sample_df,
+  mean_sim_df
+) |>
+  ggplot(aes(y = method, x = .epred)) +
+  stat_halfeye() +
+  geom_vline(xintercept = marginal_p_y1) +
+  xlim(c(0,1)) +
+  labs(
+    title = "Estimate of Pr(Y = 1)"
+  )
+```
+
