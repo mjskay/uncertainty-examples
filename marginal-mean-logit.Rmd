@@ -221,7 +221,9 @@ bind_rows(
   geom_vline(xintercept = marginal_p_y1) +
   xlim(c(0,1)) +
   labs(
-    title = "Estimate of Pr(Y = 1)"
+    title = "Estimate of Pr(Y = 1) marginalizing out X in model y ~ x",
+    subtitle = "True value = black line",
+    y = "Method of estimating Pr(X = 0), Pr(X = 1)",
   )
 ```
 
