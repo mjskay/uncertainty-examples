@@ -131,8 +131,8 @@ about what we’re doing mathematically, which is something like:
 
 $$
 \begin{eqnarray}
-\E_{X_\mathrm{equal}}(Y) &=& \E(Y|X_\mathrm{equal} = 0)\cdot \Pr(X_\mathrm{equal} = 0) + \E(Y|X_\mathrm{equal} = 1)\cdot \Pr(X_\mathrm{equal} = 1)\\
-&=& \E(Y|X_\mathrm{equal} = 0) \cdot 0.5 + \E(Y|X_\mathrm{equal} = 1) \cdot 0.5
+E_{X_\mathrm{equal}}(Y) &=& E(Y|X_\mathrm{equal} = 0)\cdot \Pr(X_\mathrm{equal} = 0) + E(Y|X_\mathrm{equal} = 1)\cdot \Pr(X_\mathrm{equal} = 1)\\
+&=& E(Y|X_\mathrm{equal} = 0) \cdot 0.5 + E(Y|X_\mathrm{equal} = 1) \cdot 0.5
 \end{eqnarray}
 $$
 
@@ -182,7 +182,7 @@ In essence, if we observed $X_\mathrm{obs}$, we are now doing:
 
 $$
 \begin{eqnarray}
-\E_{X_\mathrm{obs}}(Y) &=& \E(Y|X_\mathrm{obs} = 0)\cdot \Pr(X_\mathrm{obs} = 0) + \E(Y|X_\mathrm{obs} = 1)\cdot \Pr(X_\mathrm{obs} = 1)\\
+E_{X_\mathrm{obs}}(Y) &=& E(Y|X_\mathrm{obs} = 0)\cdot \Pr(X_\mathrm{obs} = 0) + E(Y|X_\mathrm{obs} = 1)\cdot \Pr(X_\mathrm{obs} = 1)\\
 \end{eqnarray}
 $$
 
@@ -198,7 +198,7 @@ something like:
 
 $$
 \begin{eqnarray}
-\E_{\tilde{X}}(Y) &=& \E(Y|\tilde{X} = 0)\cdot \Pr(\tilde{X} = 0) + \E(Y|\tilde{X} = 1)\cdot \Pr(\tilde{X} = 1)\\
+E_{\tilde{X}}(Y) &=& E(Y|\tilde{X} = 0)\cdot \Pr(\tilde{X} = 0) + E(Y|\tilde{X} = 1)\cdot \Pr(\tilde{X} = 1)\\
 \end{eqnarray}
 $$
 
