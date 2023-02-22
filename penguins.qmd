@@ -1,0 +1,123 @@
+---
+title: "Uncertainty with Palmer Penguins"
+format: html
+editor: visual
+---
+
+## Setup
+
+The following libraries are needed:
+
+```{r}
+library(palmerpenguins)  # the data
+library(ggplot2)         # for plotting
+library(dplyr)           # for data cleaning
+library(ggdist)          # for visualizing distributions and uncertainty
+library(distributional)  # for creating distributions, e.g. dist_normal()
+library(broom)           # for tidying model output: augment()
+
+# a nicer ggplot theme...
+theme_set(theme_ggdist())
+```
+
+
+## The data --- Penguins!
+
+We'll be using the Palmer Penguins dataset, which you can learn more about [here](https://allisonhorst.github.io/palmerpenguins/).
+
+It contains data on several species of penguins who live in Antarctica, and 
+includes data on their body mass, sex, and dimensions of their bills and
+flippers:
+
+```{r}
+glimpse(penguins)
+```
+
+For example, here is a simple scatter plot of body mass by sex and species:
+
+```{r}
+penguins |>
+  ggplot(aes(x = body_mass_g, y = species, color = sex)) +
+  geom_point()
+```
+
+As you can see, it's a bit hard to see what's going on just using a scatterplot, because
+of the overlap between points.
+
+Let's use `ggdist::geom_dots()` with `position_dodge()`
+to make it easier to see...
+
+```{r}
+penguins |>
+  ggplot(aes(x = body_mass_g, y = species, fill = sex)) +
+  geom_dots(position = "dodge", linewidth = 0)
+```
+
+We can see a few missing data values in `sex` that we will remove for now:
+
+```{r}
+penguins_clean = penguins |>
+  filter(!is.na(sex))
+
+penguins_clean |>
+  ggplot(aes(x = body_mass_g, y = species, fill = sex)) +
+  geom_dots(position = "dodge", linewidth = 0)
+```
+
+
+## Adding a model and showing uncertainty
+
+Say we want an estimate of the average mass of a penguin, given its species 
+and sex. We could fit a linear model to estimate this:
+
+```{r}
+m = lm(body_mass_g ~ species * sex, data = penguins_clean)
+m
+```
+
+Then, we can use the `broom` package to get estimates of the body mass for each
+combination of species and sex in the data. To do that, we'll first create a 
+prediction grid containing all combinations of the predictors we want to
+estimate mean body mass for:
+
+```{r}
+grid = penguins_clean |>
+  select(species, sex) |>
+  unique()
+
+grid
+```
+
+Then, we'll use `broom::augment()` to get means (`.fitted`) and standard errors (`.se.fit`) for each
+combination of species and sex:
+
+```{r}
+predictions = augment(m, newdata = grid, se_fit = TRUE)
+predictions
+```
+
+Finally, since we'll be using a Student t distribution to calculate intervals,
+we need the degrees of freedom of the fit:
+
+```{r}
+dof = df.residual(m)
+dof
+```
+
+Now, we can generate a visulization of uncertainty in the mean body mass conditional
+on sex and speciies:
+
+```{r}
+predictions |>
+  ggplot(aes(y = species, fill = sex)) +
+  stat_halfeye(aes(xdist = dist_student_t(dof, .fitted, .se.fit)), scale = 0.5) 
+```
+
+We can combine the estimate of the mean with the raw data to see how they line up:
+
+```{r}
+predictions |>
+  ggplot(aes(y = species, fill = sex)) +
+  geom_swarm(aes(x = body_mass_g), data = penguins_clean, position = "dodge", linewidth = 0, height = 0.7, alpha = 0.5) +
+  stat_pointinterval(aes(xdist = dist_student_t(dof, .fitted, .se.fit)), position = "dodge", scale = 0.5, height = 0.7)
+```
