@@ -1,0 +1,171 @@
+---
+title: "Multivariate measurement error model in brms"
+author: "Matthew Kay"
+date: "2023-02-20"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(brms)
+library(posterior)
+library(ggdist)
+
+theme_set(theme_ggdist())
+options(mc.cores = parallel::detectCores())
+```
+
+# Generate data
+
+We'll generate some bivariate Normal data for two variables, `x1` and `x2`, 
+with a known correlation (`true_cor`) and a known bias (`true_x2_bias`).
+
+We'll also generate "observations" of these variables, `x1_obs` and `x2_obs`,
+with measurement error `x1_sd` and `x2_sd`. i.e. we're assuming we can't observe
+`x1` or `x2` directly (so they won't be in our model).
+
+```{r}
+set.seed(1234)
+
+# reparameterize gamma dist in terms of mean and precision
+# this will allow us to generate distributions of measurement error SDs
+rgamma_mean_prec = function(n, mean, prec) rgamma(n, prec * mean / (mean + 1), prec / (mean + 1))
+
+true_x2_bias = 0.1
+true_cor = 0.6
+
+df = MASS::mvrnorm(
+  100, 
+  mu = c(x1 = 0, x2 = true_x2_bias), 
+  Sigma = matrix(c(1,true_cor,true_cor,1), nrow = 2)
+) |>
+  as_tibble() |>
+  mutate(
+    x1_sd = rgamma_mean_prec(n(), 0.5, 500),
+    x1_obs = rnorm(n(), x1, x1_sd),
+    # give x2 higher measurement error on average compared to x1, in analogy
+    # to how adaptive will have higher measurement error
+    x2_sd = rgamma_mean_prec(n(), 0.8, 500),
+    x2_obs = rnorm(n(), x2, x2_sd)
+  )
+```
+
+The first couple of rows of the data:
+
+```{r}
+head(df)
+```
+
+Plotted, with (unobservable) `x1` and `x2` as black squares and observed `x1_obs` and
+`x2_obs` as blue dots +/- 2*SD:
+
+```{r}
+df |>
+  ggplot(aes(x1, x2)) +
+  geom_point(aes(x1_obs, x2_obs), color = "blue", alpha = 0.35) +
+  geom_linerange(aes(x = x1_obs, y = x2_obs, ymin = x2_obs - 2*x2_sd, ymax = x2_obs + 2*x2_sd), color = "blue", alpha = 0.35) +
+  geom_linerange(aes(x = x1_obs, y = x2_obs, xmin = x1_obs - 2*x1_sd, xmax = x1_obs + 2*x1_sd), color = "blue", alpha = 0.35) +
+  geom_point(alpha = 0.75, shape = "square") +
+  coord_fixed()
+```
+
+A model of this data generating process is something like this:
+
+$$
+\begin{align}
+x_1^\textrm{obs} &\sim \operatorname{Normal}\left(x_1, x_1^\textrm{sd}\right)\\
+x_2^\textrm{obs} &\sim \operatorname{Normal}\left(x_2, x_2^\textrm{sd}\right)\\
+\begin{bmatrix}x_1 \\ x_2 \end{bmatrix} &\sim \operatorname{MVN}\left(
+  \begin{bmatrix} \mu_1 \\ \mu_2 \end{bmatrix},
+  \begin{bmatrix} \sigma_1^2 & \sigma_1\rho\sigma_2 \\ \sigma_1\rho\sigma_2 & \sigma_2^2  \end{bmatrix}
+\right)
+\end{align}
+$$
+
+Where $x_1$ and $x_2$ are unobserved, and $\rho$ (`true_cor`) is the correlation between $x_1$ and $x_2$.
+This looks a bit more complicated than our data generating process above, but that's because
+we fixed $\mu_1 = 0$ so that $\mu_2$ could be the bias of $x_2$ relative to $x_1$ (`true_x2_bias`). 
+We also fixed both $\sigma$s to be 1, which simplified the data generating process to this:
+
+$$
+\begin{align}
+\begin{bmatrix}x_1 \\ x_2 \end{bmatrix} &\sim \operatorname{MVN}\left(
+  \begin{bmatrix} 0 \\ \mu_2 \end{bmatrix},
+  \begin{bmatrix} 1 & \rho \\ \rho & 1  \end{bmatrix}
+\right)
+\end{align}
+$$
+
+However, we cannot assume those simplifications hold when fitting the model, so 
+we estimate all those parameters from the data. The corresponding model written
+in brms syntax is:
+
+```{r}
+m_formula = 
+  bf(x1_obs | mi(x1_sd) ~ 1) +
+  bf(x2_obs | mi(x2_sd) ~ 1) +
+  set_rescor(TRUE)
+```
+
+For example, `x1_obs | mi(x1_sd)` defines a measurement error portion of the model, like 
+$x_1^\textrm{obs} \sim \operatorname{Normal}\left(x_1, x_1^\textrm{sd}\right)$, and the
+combination of the two formulas with `+ set_rescor(TRUE)` tells brms to fit a multivariate
+model and estimate the residual correlation, defining the multivariate normal ($\operatorname{MVN}$)
+portion of the model.
+
+Let's check on priors:
+
+```{r}
+get_prior(m_formula, data = df)
+```
+
+I'll set some simple priors on this for the purposes of the example (should not
+just use these directly on the IRT stuff...)
+
+```{r}
+m_prior = c(
+  prior(normal(0, 1), class = Intercept, resp = x1obs),
+  prior(normal(0, 1), class = Intercept, resp = x2obs),
+  prior(lkj(2), class = rescor),
+  prior(normal(1, 1), class = sigma, resp = x1obs),
+  prior(normal(1, 1), class = sigma, resp = x2obs)
+)
+```
+
+And fit the model:
+
+```{r}
+m = brm(
+  m_formula,
+  prior = m_prior,
+  backend = "cmdstanr",
+  data = df
+)
+```
+
+Results look like this:
+
+```{r}
+m
+```
+
+This gives us an estimate of the bias:
+
+```{r}
+m |>
+  as_draws_df() |>
+  mutate(bias = b_x2obs_Intercept - b_x1obs_Intercept) |>
+  ggplot(aes(x = bias)) +
+  stat_halfeye() +
+  geom_vline(xintercept = true_x2_bias)
+```
+
+And an estimate of the correlation:
+
+```{r}
+m |>
+  as_draws_df() |>
+  ggplot(aes(x = rescor__x1obs__x2obs)) +
+  stat_halfeye() +
+  geom_vline(xintercept = true_cor)
+```
