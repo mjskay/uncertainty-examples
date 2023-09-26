@@ -71,7 +71,7 @@ penguins_clean |>
     position = "dodge", 
     data = preds_long, 
     side = "both", 
-    scale = 0.5, 
+    scale = 0.35, 
     alpha = 0.65, 
     color = "gray25", 
     linewidth = 0.5
@@ -81,3 +81,32 @@ penguins_clean |>
   )
 ```
 
+A disadvantage of diamond plots like this is that more uncertain estimates become
+visually larger. You could make the diamonds shrink their vertical height in proportion
+to their uncertainty, to better mimic how densities (which have equal area) would look.
+We can do this by calculating the width of the interval and making the thickness at the
+point estimate inversely proportional to that width:
+
+```{r}
+preds_long = preds |>
+  mutate(width = upr - lwr) |>
+  pivot_longer(c(fit, lwr, upr)) |>
+  mutate(is_point = as.integer(name == "fit"))
+
+penguins_clean |>
+  ggplot(aes(x = body_mass_g, y = species, fill = sex)) +
+  geom_weave(position = "dodge", linewidth = NA, alpha = 0.35) +
+  geom_slab(
+    aes(x = value, y = species, thickness = is_point / width), 
+    position = "dodge", 
+    data = preds_long, 
+    side = "both", 
+    scale = 0.35, 
+    alpha = 0.65, 
+    color = "gray25", 
+    linewidth = 0.5
+  ) +
+  labs(
+    title = "Diamond plot with data using geom_slab and geom_weave"
+  )
+```
