@@ -1,0 +1,83 @@
+---
+title: "Diamond plot with data using geom_slab and geom_weave"
+author: "Matthew Kay"
+date: "2023-09-26"
+output: github_document
+---
+
+
+```{r setup, warning = FALSE, message = FALSE}
+library(palmerpenguins)
+library(ggplot2)
+library(ggdist)
+library(dplyr)
+library(tidyr)
+
+theme_set(theme_ggdist())
+knitr::opts_chunk$set(dev = "ragg_png", fig.retina = 2)
+```
+
+Let's fit a simple model for mean body mass of penguins based on this data:
+
+```{r}
+penguins_clean = filter(penguins, !is.na(sex))
+
+penguins_clean |>
+  ggplot(aes(x = body_mass_g, y = species, fill = sex)) +
+  geom_weave(position = "dodge", linewidth = NA)
+```
+
+Here's a model for average body mass conditional on sex and species:
+
+```{r}
+m = lm(body_mass_g ~ species * sex, data = penguins_clean)
+m
+```
+
+We can get conditional means and confidence intervals from the model:
+
+```{r}
+grid = penguins_clean |>
+  modelr::data_grid(sex, species)
+
+preds = cbind(grid, predict(m, newdata = grid, interval = "confidence"))
+preds
+```
+
+To create the diamonds, we will reshape this data into a data frame with three
+rows per `sex*species` combination, one for the point estimate, and one for each
+end of the interval. We'll also add an `is_point` column that is `1` for the
+point estimate and `0` for the interval endpoints.
+
+```{r}
+preds_long = preds |>
+  pivot_longer(c(fit, lwr, upr)) |>
+  mutate(is_point = as.integer(name == "fit"))
+
+preds_long
+```
+
+We can use the `is_point` column to set the thickness of a slab geometry, so that
+it has maximum thickness at the point estimate and zero thickness at the interval
+endpoints. We also set `scale = 0.5` for `geom_slab()` so that the diamonds
+are not too tall:
+
+```{r}
+penguins_clean |>
+  ggplot(aes(x = body_mass_g, y = species, fill = sex)) +
+  geom_weave(position = "dodge", linewidth = NA, alpha = 0.35) +
+  geom_slab(
+    aes(x = value, y = species, thickness = is_point), 
+    position = "dodge", 
+    data = preds_long, 
+    side = "both", 
+    scale = 0.5, 
+    alpha = 0.65, 
+    color = "gray25", 
+    linewidth = 0.5
+  ) +
+  labs(
+    title = "Diamond plot with data using geom_slab and geom_weave"
+  )
+```
+
