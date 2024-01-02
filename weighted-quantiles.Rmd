@@ -78,9 +78,7 @@ To demonstrate the quantile functions, we'll use an example data set denoted $X^
 for its unweighted version:
 
 ```{r}
-# X_star = c(1,2,3,5,9,10.5)
 X_star = c(1,2,3,3,3,3,5,9,10.5)
-# X_star = c(1,2,3,3,3,3,3,3,3,3,3,3,5,9,10.5)
 # calculate the weights as well so we can easily show the equivalence of unweighted
 # quantile estimators to weighted ones with equal weights
 w_star = rep(1, length(X_star)) / length(X_star)

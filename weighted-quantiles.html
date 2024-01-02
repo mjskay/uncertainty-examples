@@ -12,9 +12,9 @@
 
 <meta name="author" content="Matthew Kay" />
 
-<meta name="date" content="2024-12-10" />
+<meta name="date" content="2024-01-01" />
 
-<title>weighted quantiles</title>
+<title>Weighted quantiles</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -338,9 +338,9 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 
 
 
-<h1 class="title toc-ignore">weighted quantiles</h1>
+<h1 class="title toc-ignore">Weighted quantiles</h1>
 <h4 class="author">Matthew Kay</h4>
-<h4 class="date">2024-12-10</h4>
+<h4 class="date">2024-01-01</h4>
 
 
 <div id="TOC">
@@ -451,14 +451,12 @@ weighted quantile estimators against those desirable properties.</p>
 <p>To demonstrate the quantile functions, we’ll use an example data set
 denoted <span class="math inline">\(X^*\)</span> for its unweighted
 version:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="co"># X_star = c(1,2,3,5,9,10.5)</span></span>
-<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>X_star <span class="ot">=</span> <span class="fu">c</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">3</span>,<span class="dv">3</span>,<span class="dv">3</span>,<span class="dv">5</span>,<span class="dv">9</span>,<span class="fl">10.5</span>)</span>
-<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="co"># X_star = c(1,2,3,3,3,3,3,3,3,3,3,3,5,9,10.5)</span></span>
-<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="co"># calculate the weights as well so we can easily show the equivalence of unweighted</span></span>
-<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a><span class="co"># quantile estimators to weighted ones with equal weights</span></span>
-<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>w_star <span class="ot">=</span> <span class="fu">rep</span>(<span class="dv">1</span>, <span class="fu">length</span>(X_star)) <span class="sc">/</span> <span class="fu">length</span>(X_star)</span>
-<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>W_star <span class="ot">=</span> <span class="fu">cumsum</span>(w_star)</span>
-<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a><span class="fu">tibble</span>(<span class="st">&quot;X*&quot;</span> <span class="ot">=</span> X_star, <span class="st">&quot;w*&quot;</span> <span class="ot">=</span> w_star, <span class="st">&quot;W*&quot;</span> <span class="ot">=</span> W_star)</span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a>X_star <span class="ot">=</span> <span class="fu">c</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">3</span>,<span class="dv">3</span>,<span class="dv">3</span>,<span class="dv">5</span>,<span class="dv">9</span>,<span class="fl">10.5</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="co"># calculate the weights as well so we can easily show the equivalence of unweighted</span></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="co"># quantile estimators to weighted ones with equal weights</span></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>w_star <span class="ot">=</span> <span class="fu">rep</span>(<span class="dv">1</span>, <span class="fu">length</span>(X_star)) <span class="sc">/</span> <span class="fu">length</span>(X_star)</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>W_star <span class="ot">=</span> <span class="fu">cumsum</span>(w_star)</span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a><span class="fu">tibble</span>(<span class="st">&quot;X*&quot;</span> <span class="ot">=</span> X_star, <span class="st">&quot;w*&quot;</span> <span class="ot">=</span> w_star, <span class="st">&quot;W*&quot;</span> <span class="ot">=</span> W_star)</span></code></pre></div>
 <pre><code>## # A tibble: 9 × 3
 ##    `X*`  `w*`  `W*`
 ##   &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;
