@@ -204,23 +204,24 @@ Q_hat_w_color = "#66c2a5"
 
 inverse_cdf_type1 = stepfun(W, c(X, X[length(X)]), right = TRUE)
 
-quantile_plot = function(inverse_cdf, type, bounds = discontinuous_quantile_bounds) {
+discontinuous_quantile_plot = function(inverse_cdf, type) {
   (
     ggplot() +
-      bounds(X_star, w_star) +
+      discontinuous_quantile_bounds(X_star, w_star) +
       inverse_cdf_plot(X_star, name = "X*", type = type) + 
       labs(subtitle = "Quantiles of unweighted sample") +
-      geom_function(fun = \(p) quantile(X_star, p, type = type), color = Q_hat_color, linewidth = 1, n = 1000) 
+      geom_function(fun = \(p) quantile(X_star, p, type = type), color = Q_hat_color, linewidth = 1, n = 1000) +
+      geom_point(aes(W_star, quantile(X_star, W_star, type = type)), color = Q_hat_color)
   ) + (
     ggplot() +
-      bounds(X, w) +
+      discontinuous_quantile_bounds(X, w) +
       inverse_cdf_plot(X, w, type = type) + 
       labs(subtitle = "Quantiles of weighted sample") +
       geom_function(fun = \(p) quantile(X_star, p, type = type), color = Q_hat_color, linewidth = 1, n = 1000, alpha = 0.65, linetype = "11") + 
-      geom_function(fun = inverse_cdf, color = Q_hat_w_color, linewidth = 1, n = 1000) 
+      geom_function(fun = inverse_cdf, color = Q_hat_w_color, linewidth = 1, n = 1000) +
+      geom_point(aes(W, inverse_cdf(W)), color = Q_hat_w_color)
   )
 }
-discontinuous_quantile_plot = \(...) quantile_plot(..., bounds = discontinuous_quantile_bounds)
 
 discontinuous_quantile_plot(inverse_cdf_type1, 1)
 ```
