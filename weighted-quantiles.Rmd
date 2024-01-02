@@ -1,0 +1,795 @@
+---
+title: "Weighted quantiles"
+author: "Matthew Kay"
+date: "2024-01-01"
+output: 
+  html_vignette:
+    toc: yes
+    fig.width: 6
+    fig.height: 4
+---
+
+<style>
+img {
+  border: none;
+}
+</style>
+
+```{r include=FALSE}
+knitr::opts_chunk$set(
+  fig.retina = 2,
+  fig.width = 6,
+  fig.height = 4,
+  dev.args = list(
+    png = list(type = "cairo")
+  )
+)
+```
+
+
+```{r setup, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(rlang)
+library(patchwork)
+
+theme_set(ggdist::theme_ggdist())
+```
+
+
+## Introduction
+
+Let's figure out how to calculate *weighted* quantiles. We'll do this by 
+trying to generalize the unweighted quantile types described by 
+[Hyndman and Fan](https://doi.org/10.2307/2684934), and also evaluate 
+the types against some desirable properties of methods for computing weighted 
+quantiles generalized from the properties they applied to the unweighted case.
+
+For unweighted quantiles, we have the following definitions, similar to [Hyndman and Fan](https://doi.org/10.2307/2684934):
+
+- A sample, $X = \{X_1, ... X_n\}$ from a distribution $F$.
+- Its order statistics, $\{X_{(1)}, ... X_{(n)}\}$: the values of $X$ sorted
+  from lowest to highest.
+- $\operatorname{Freq}[X_k \le x]$, the number of observations less than or equal to $x$.
+- $\hat F_X(x)$, the empirical cumulative distribution function of the sample $X$.
+- $\hat Q_{X,i}(p)$, the type-$i$ quantile function of the sample $X$.
+
+We'll generalize these definitions to weighted quantiles by introducing the following
+additional terms:
+
+- Weights, $w = \{w_1, ... w_n\}$, where $w_k \ge 0$ and $\sum_k w_k = 1$ (later we
+  may relax the requirement that the weights sum to 1).
+- The weights for each order statistic, $\{w_{(1)}, ... w_{(n)}\}$.
+- $\operatorname{Weight}[X_k \le x]$, the cumulative sum of the weights of all observations less than or equal to $x$.
+- The cumulative weight for each order statistic, $W_{(k)} = \operatorname{Weight}[X_j \le X_{(k)}] = \sum_{j=1}^k w_j$ 
+- $\hat F_{X,w}(x)$, the weighted empirical cumulative distribution function of the sample $X$
+  with weights $w$.
+- $\hat Q_{X,w,i}(p)$, the type-$i$ weighted quantile function of the sample $X$ with
+  weights $w$.
+
+The problem now is to determine the definitions of
+each weighted quantile estimator, $\hat Q_{X,w,i}(p)$, translate the desirable 
+properties of a quantile function from the unweighted case to the weighted case,
+and evaluate the weighted quantile estimators against those desirable properties.
+
+## Example data
+
+To demonstrate the quantile functions, we'll use an example data set denoted $X^*$
+for its unweighted version:
+
+```{r}
+# X_star = c(1,2,3,5,9,10.5)
+X_star = c(1,2,3,3,3,3,5,9,10.5)
+# X_star = c(1,2,3,3,3,3,3,3,3,3,3,3,5,9,10.5)
+# calculate the weights as well so we can easily show the equivalence of unweighted
+# quantile estimators to weighted ones with equal weights
+w_star = rep(1, length(X_star)) / length(X_star)
+W_star = cumsum(w_star)
+tibble("X*" = X_star, "w*" = w_star, "W*" = W_star)
+```
+
+
+And $X$ and $w$ for its corresponding weighted version:
+
+```{r}
+X = unique(X_star)
+w = as.vector(prop.table(table(X_star)))
+W = cumsum(w)
+tibble(X, w, W)
+```
+
+The CDF of both versions of this dataset looks like this:
+
+```{r}
+cdf_plot = function(X, w = NULL, name = "X") {
+  w = w %||% rep(1/length(X), length(X))
+  W = cumsum(w)
+  min_x = floor(min(X))
+  max_x = ceiling(max(X))
+
+  ggplot() + 
+    geom_step(aes(c(X[[1]], X), c(0, W)), direction = "hv", color = "gray65") + 
+    geom_point(aes(X, W), color = "gray65", size = 2) +
+    ylim(0, 1) +
+    scale_x_continuous(limits = c(min_x, max_x), breaks = seq(min_x, max_x, by = 1)) +
+    labs(
+      x = "quantile: x",
+      y = paste0("probability: P(", name, " <= x)")
+    )
+}
+
+(
+  cdf_plot(X_star, name = "X*") + labs(subtitle = "Empirical CDF of unweighted sample")
+) + (
+  cdf_plot(X, w) + labs(subtitle = "Empirical CDF of weighted sample")
+)
+```
+
+The question is how to reasonably invert this step function, especially for continuous
+distributions. 
+
+In the unweighted case, that amounts to finding a piecewise linear function to approximate
+the inverse of the above step function:
+
+```{r}
+inverse_cdf_plot = function(X, w = NULL, name = "X", type = "i") {
+  index = if (is.null(w)) paste0("X,", type) else paste0("X,w,", type)
+  w = w %||% rep(1/length(X), length(X))
+  W = cumsum(w)
+  min_x = floor(min(X))
+  max_x = ceiling(max(X))
+
+  list(
+    geom_step(aes(c(0, W), c(X[[1]], X)), direction = "vh", color = "gray65"),
+    geom_point(aes(W, X), color = "gray65", size = 2),
+    xlim(0, 1),
+    scale_y_continuous(limits = c(min_x, max_x), breaks = seq(min_x, max_x, by = 1)),
+    labs(
+      x = expression(paste("probability: ", italic(p))),
+      y = bquote(paste("quantile: ", italic(hat(Q)[.(index)])(italic(p))))
+    )
+  )
+}
+
+(
+  ggplot() + inverse_cdf_plot(X_star, name = "X*") + labs(subtitle = "Quantiles of unweighted sample")
+) + (
+  ggplot() + inverse_cdf_plot(X, w) + labs(subtitle = "Quantiles of weighted sample")
+)
+```
+
+
+## Discontinuous quantiles
+
+We should be able to provide some bounds on what a reasonable
+solution is for discontinuous quantiles. In particular, we probably want a step function where:
+
+$\hat Q_{X,w,i}(p) \ge X_{(l)}$ where $l$ is the largest integer such that $W_{(l)} \le p$; and
+
+$\hat Q_{X,w,i}(p) \le X_{(u)}$ where $u$ is the smallest integer such that $W_{(u)} \ge p$
+
+That is, the solution is somewhere between the largest value with a cumulative
+weight less than or equal to $p$ and the smallest value with a cumulative weight
+greater than or equal to $p$:
+
+```{r}
+discontinuous_quantile_bounds = function(X, w) {
+  W = cumsum(w)
+  upper_bound = stepfun(W, c(X, X[length(X)]))
+  lower_bound = stepfun(W, c(X[1], X))
+  p = sort(unique(c(W, W - .Machine$double.eps, W - w)))
+
+  geom_ribbon(aes(p, ymin = lower_bound(p), ymax = upper_bound(p)), fill = "gray95")
+}
+
+(
+  ggplot() +
+    discontinuous_quantile_bounds(X_star, w_star) +
+    inverse_cdf_plot(X_star, name = "X*") + labs(subtitle = "Quantiles of unweighted sample")
+) + (
+  ggplot() +
+    discontinuous_quantile_bounds(X, w) +
+    inverse_cdf_plot(X, w) + labs(subtitle = "Quantiles of weighted sample")
+)
+```
+
+Discontinuous quantiles are directly a function of the inverse CDF as a step function, and so can be directly translated to the weighted case using the natural definition of the weighted ECDF as the cumulative sum of the normalized weights, as described next.
+
+### Type 1
+
+Type 1 is the inverse of the empirical CDF as a step function. This is the step function
+defined by the points $(W_{(k)}, X_{(k + 1)})$; i.e. $Q_{X,w,1}(p) = X_{(l)}$ if $W_{(l)} = p$ and $X_{(u)}$ otherwise.
+
+```{r}
+Q_hat_color = "#fc8d62"
+Q_hat_w_color = "#66c2a5"
+
+inverse_cdf_type1 = stepfun(W, c(X, X[length(X)]), right = TRUE)
+
+quantile_plot = function(inverse_cdf, type, bounds = discontinuous_quantile_bounds) {
+  (
+    ggplot() +
+      bounds(X_star, w_star) +
+      inverse_cdf_plot(X_star, name = "X*", type = type) + 
+      labs(subtitle = "Quantiles of unweighted sample") +
+      geom_function(fun = \(p) quantile(X_star, p, type = type), color = Q_hat_color, linewidth = 1, n = 1000) 
+  ) + (
+    ggplot() +
+      bounds(X, w) +
+      inverse_cdf_plot(X, w, type = type) + 
+      labs(subtitle = "Quantiles of weighted sample") +
+      geom_function(fun = \(p) quantile(X_star, p, type = type), color = Q_hat_color, linewidth = 1, n = 1000, alpha = 0.65, linetype = "11") + 
+      geom_function(fun = inverse_cdf, color = Q_hat_w_color, linewidth = 1, n = 1000) 
+  )
+}
+discontinuous_quantile_plot = \(...) quantile_plot(..., bounds = discontinuous_quantile_bounds)
+
+discontinuous_quantile_plot(inverse_cdf_type1, 1)
+```
+
+### Type 2
+
+Type 2 quantiles are like type 1 but average at discontinuities (the step), so if
+we average the step function of type 1 with and without `right = TRUE` it 
+should produce this:
+
+```{r}
+inverse_cdf_type2_left = stepfun(W, c(X, X[length(X)]), right = FALSE)
+inverse_cdf_type2_right = stepfun(W, c(X, X[length(X)]), right = TRUE)
+inverse_cdf_type2 = function(x) (inverse_cdf_type2_left(x) + inverse_cdf_type2_right(x))/2
+discontinuous_quantile_plot(inverse_cdf_type2, 2)
+```
+
+Type 1 and Type 2 are identical except at discontinuities. We can see the difference 
+between Type 1 and Type 2 by evaluating their values at discontinuities
+(i.e. values of $W_{(k)}$):
+
+```{r}
+tibble(W, inverse_cdf_type1(W), inverse_cdf_type2(W))
+```
+
+### Type 3
+
+Type 3 quantiles have their discontintuity halfway between the cumulative weights.
+This is the step function defined by the points $(W_{(k)} - w_{(k)/2}, X_{(k)})$:
+
+```{r}
+inverse_cdf_type3 = stepfun(W - w/2, c(X[1], X), right = TRUE)
+discontinuous_quantile_plot(inverse_cdf_type3, 3)
+```
+
+Here we see the first divergence between the weighted and unweighted algorithm:
+because the weighted algorithm does not know the original sample size (and makes
+no assumptions about it), it cannot know how many actual observations underlie
+a given weight. Thus, it treats the region around 3 differently, but in a way
+that is (in my view) consistent with the original algorithm.
+
+
+## Continuous quantiles
+
+Again, we should be able to provide some bounds on what a reasonable
+solution is for continuous quantiles. In particular, we probably want a piecewise linear function whose
+lower bound is the piecewise linear function defined by the points $(W_{(k)}, X_{(k)})$ and
+whose upper bound is the piecewise linear function defined by the points $(W_{(k)}, X_{(k + 1)})$:
+
+```{r}
+continuous_quantile_bounds = function(X, w) {
+  W = cumsum(w)
+  upper_bound = stepfun(W, c(X, X[length(X)]))
+  lower_bound = stepfun(W, c(X[1], X))
+  p = sort(unique(c(W, W - .Machine$double.eps, W - w)))
+
+  geom_ribbon(aes(c(0, W), ymin = c(X[1], X), ymax = c(X, X[length(X)])), fill = "gray95")
+}
+
+(
+  ggplot() +
+    continuous_quantile_bounds(X_star, w_star) +
+    inverse_cdf_plot(X_star, name = "X*") + labs(subtitle = "Quantiles of unweighted sample")
+) + (
+  ggplot() +
+    continuous_quantile_bounds(X, w) +
+    inverse_cdf_plot(X, w) + labs(subtitle = "Quantiles of weighted sample")
+)
+```
+
+To derive the weighted version, we can rewrite the general
+formula for the quantile function as a weighted average of two order statistics.
+Per [Hyndman and Fan](https://doi.org/10.2307/2684934), in the unweighted case this is:
+
+$$
+\begin{align}
+\hat Q_{X,i}(p) &= (1 - \gamma) X_{(j)} + \gamma X_{(j + 1)}\\
+j &= \lfloor pn + m \rfloor &&m \in \mathbb{R}\\
+\gamma &= pn + m - j && 0 \le \gamma \le 1
+\end{align}
+$$
+
+$m$ determines the type of quantile estimator; for example, the type 7
+quantile estimator uses $m = 1 - p$.
+
+To translate to the weighted case, first find the largest value $l$ such that 
+$W_{(l)} \le p$. Then in the unweighted case, note that $pn$ is equal 
+to $l$ plus the distance between $l$ and $l + 1$ needed to account for the 
+difference between $p$ and $W_{(l)}$ as a fraction of the distance between $W_{(l)}$
+and $W_{(l + 1)}$, which is $w_{(l+1)}$. Thus, we replace $pn$ with
+$l + (p - W_{(l)})/w_{(l+1)}$:
+
+$$
+\begin{align}
+\hat Q_{X,w,i}(p) &= (1 - \gamma) X_{(j)} + \gamma X_{(j + 1)}\\
+j &= \left\lfloor l + \frac{p - W_{(l)}}{w_{(l+1)}} + m \right\rfloor\\
+\gamma &= l + \frac{p - W_{(l)}}{w_{(l+1)}} + m - j
+\end{align}
+$$
+
+That function can be implemented as follows:
+
+```{r}
+weighted_quantile = function(X, w = NULL, p, m = \(p) 0.5) {
+  w = w %||% rep(1/length(X), length(X))
+  
+  if (is.unsorted(X)) {
+    i = order(X)
+    X = X[i]
+    w = w[i]
+  }
+  
+  X = c(X[[1]], X)
+  w = c(0, w)
+  W = cumsum(w)
+  n = length(X)
+
+  # function to find largest l such that W[[l]] <= p
+  l_at_p = stepfun(W, c(1, seq_along(X)))
+  
+  w[[n + 1]] = 1  # so that 0/w[l + 1] when l = n is 0, not NaN
+  X[[n + 1]] = X[[n]]  # so that X[j + 1] is always defined
+
+  l = l_at_p(p)
+  m = m(p)
+  nppm = l + (p - W[l])/w[l + 1] + m
+  j = floor(nppm)
+  gamma = nppm - j
+  j[j > n] = n
+  (1 - gamma) * X[j] + gamma * X[j + 1]
+}
+```
+
+We can see how the function works on unweighted and weighted samples compared to the
+unweighted quantile function. First we'll look at Type 7 quantiles, with $m = 1 - p$:
+
+```{r}
+m_7 = \(p) 1 - p
+
+(
+  ggplot() +
+    continuous_quantile_bounds(X_star, w_star) +
+    inverse_cdf_plot(X_star, name = "X*", type = 7) + 
+    labs(subtitle = "Quantiles of unweighted sample") +
+    geom_function(fun = \(p) quantile(X_star, p, type = 7), color = Q_hat_color, linewidth = 1, n = 1000) 
+) + (
+  ggplot() +
+    continuous_quantile_bounds(X, w) +
+    inverse_cdf_plot(X, w, type = 7) + 
+    labs(subtitle = "Quantiles of weighted sample") +
+    geom_function(fun = \(p) quantile(X_star, p, type = 7), color = Q_hat_color, linewidth = 1, n = 1000, alpha = 0.65, linetype = "11") + 
+    geom_function(fun = \(p) weighted_quantile(X, w, p, m_7), color = Q_hat_w_color, linewidth = 1, n = 1000) 
+)
+```
+
+In the unweighted case, the two functions are equivalent. In the weighted case,
+the estimator generally agrees with the unweighted estimator. However, we do not 
+know about the number of observations (only the weights), so the weighted
+estimator will not produce flat regions like in the unweighted case. I think
+this is a reasonable compromise, as knowing the size of the flat regions
+requires knowing the sample size, and the results are quite close anyway.
+However, we will revisit this issue later when discussing medians.
+
+### Alternative parameterization: as a piecewise linear function
+
+The alternative parameterization provided in [Hyndman and Fan](https://doi.org/10.2307/2684934)
+for the unweighted quantile function is that of a piecewise linear interpolation between 
+the points $\left[p_k, X_{(k)}\right]$, with specific definitions of $p_k$ for each 
+quantile type depending on its definition of $m$:
+
+
+$$
+\begin{align}
+p_k &= \frac{k - \alpha}{n - \alpha - \beta + 1}\\
+m &= \alpha + p(1 - \alpha - \beta)
+\end{align}
+$$
+
+The formulas for $p_k$ in the unweighted case are written in terms of $k$ and $n$, but
+for the weighted case we need them to be in terms of $W_{(k)}$ or $w_{(k)}$. We can use 
+the fact that the following two identities hold in the unweighted case:
+
+$$
+\begin{align}
+n &= \frac{1}{w_{(k)}}\\
+\textrm{and } k &= nW_{(k)}\\
+  &= \frac{W_{(k)}}{w_{(k)}}
+\end{align}
+$$
+
+Using these two facts, we can express the formulas for $p_k$ without using $n$:
+
+$$
+\begin{align}
+p_k &= \frac{k - \alpha}{n - \alpha - \beta + 1}\\
+    &= \frac{\frac{W_{(k)}}{w_{(k)}} - \alpha}{\frac{1}{w_{(k)}} - \alpha - \beta + 1}\\
+    &= \frac{W_{(k)} - w_{(k)} \alpha } {1 + w_{(k)} (1 - \alpha - \beta)}\\
+\end{align}
+$$
+
+**However,** unlike in the unweighted case, these points are insufficient to fully
+describe the function. If we plot these control points over the weighted quantile
+function, they do not cover some knots:
+
+```{r}
+p_k_7 = (W - w) / (1 - w)
+
+ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Quantiles of weighted sample") +
+  geom_function(fun = \(p) weighted_quantile(X, w, p, m_7), color = Q_hat_w_color, linewidth = 1, n = 1000) +
+  geom_point(aes(p_k_7, X))
+```
+
+In the unweighted case, the points shown above---which describe where the quantile function
+intersects the horizontal steps---are sufficient, because the points where the
+function intersects the vertical steps are simply interpolations of these points.
+However, in the weighted case this does not hold, so we must interpolate between
+both the desired positions on the horizontal steps, $\left[p_k, X_{(k)}\right]$,
+and the desired positions on the vertical steps, $\left[W_{(k)}, v_k\right]$,
+where:
+
+$$
+v_k = X_{(k)} + m\left(X_{(k + 1)} - X_{(k)}\right)
+$$
+
+With both sets of points, we can fully describe the weighted quantile function
+as a piecewise linear interpolation:
+
+```{r}
+v_k_7 = X + m_7(W) * (c(X[-1], X[length(X)]) - X)
+
+ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Quantiles of weighted sample as a piecewise linear interpolation") +
+  geom_function(fun = \(p) weighted_quantile(X, w, p, m_7), color = Q_hat_w_color, linewidth = 1, n = 1000) +
+  geom_point(aes(p_k_7, X)) +
+  geom_point(aes(W, v_k_7), pch = 15)
+```
+
+We can now define the weighted quantile estimators for each of the continuous
+quantile types, 4--9, from [Hyndman and Fan](https://doi.org/10.2307/2684934).
+
+### Type 4
+
+```{r}
+alpha_4 = 0
+beta_4 = 1
+m_4 = \(p) 0
+
+continuous_quantile_plot = function(type, alpha, beta, m, X = NULL, w = NULL) {
+  X = X %||% get("X", parent.frame())
+  w = w %||% get("w", parent.frame())
+  W = cumsum(w)
+  p_k = (W - w * alpha) / (1 + w * (1 - alpha - beta))
+  v_k = X + m(W) * (c(X[-1], X[length(X)]) - X)
+
+  (
+    ggplot() +
+      continuous_quantile_bounds(X_star, w_star) +
+      inverse_cdf_plot(X_star, name = "X*", type = type) + 
+      labs(subtitle = "Quantiles of unweighted sample") +
+      geom_function(fun = \(p) quantile(X_star, p, type = type), color = Q_hat_color, linewidth = 1, n = 1000) 
+  ) + (
+    ggplot() +
+      continuous_quantile_bounds(X, w) +
+      inverse_cdf_plot(X, w, type = type) + 
+      labs(subtitle = "Quantiles of weighted sample") +
+      geom_function(fun = \(p) quantile(X_star, p, type = type), color = Q_hat_color, linewidth = 1, n = 1000, alpha = 0.65, linetype = "11") + 
+      geom_function(fun = \(p) weighted_quantile(X, w, p, m), color = Q_hat_w_color, linewidth = 1, n = 1000) +
+      geom_point(aes(x = p_k, y = X), color = Q_hat_w_color) +
+      geom_point(aes(x = W, y = v_k), pch = 15, color = Q_hat_w_color)
+  )
+}
+
+continuous_quantile_plot(4, alpha_4, beta_4, m_4)
+```
+
+We can see that type 4 quantiles essentially take the lower bound of the reasonable
+region, and so differ from the unweighted case only in flat regions, where not knowing
+the sample size causes it to be more conservative.
+
+### Type 5
+
+```{r}
+alpha_5 = 1/2
+beta_5 = 1/2
+m_5 = \(p) 1/2
+
+continuous_quantile_plot(5, alpha_5, beta_5, m_5)
+```
+
+Both approaches interpolate between the midpoints of the horizontal and
+vertical steps.
+
+### Type 6
+
+```{r}
+alpha_6 = 0
+beta_6 = 0
+m_6 = \(p) p
+
+continuous_quantile_plot(6, alpha_6, beta_6, m_6)
+```
+
+### Type 7
+
+```{r}
+alpha_7 = 1
+beta_7 = 1
+m_7 = \(p) 1 - p
+
+continuous_quantile_plot(7, alpha_7, beta_7, m_7)
+```
+
+### Type 8
+
+```{r}
+alpha_8 = 1/3
+beta_8 = 1/3
+m_8 = \(p) 1/3 * (p + 1)
+
+continuous_quantile_plot(8, alpha_8, beta_8, m_8)
+```
+
+### Type 9
+
+```{r}
+alpha_9 = 3/8
+beta_9 = 3/8
+m_9 = \(p) 1/4 * p + 3/8
+
+continuous_quantile_plot(9, alpha_9, beta_9, m_9)
+```
+
+
+
+## Desirable properties
+
+[Hyndman and Fan](https://doi.org/10.2307/2684934) provide several desirable properties
+for this function, which we will extend to the weighted case:
+
+### P1: continuity
+
+P1 from [Hyndman and Fan](https://doi.org/10.2307/2684934): $\hat Q_{X,i}(p)$ is continuous.
+
+This generalizes easily to the weighted case.
+
+### P2: the cumulative weight below a quantile is greater or equal to its probability
+
+P2 from [Hyndman and Fan](https://doi.org/10.2307/2684934): 
+$\operatorname{Freq}\left[X_k \le \hat Q_{X,i}(p)\right] \ge pn$. 
+
+Per [Hyndman and Fan](https://doi.org/10.2307/2684934) this is the sample analog
+of $F_X\left(Q_X(p)\right) \ge p$, and we can generalize this to the weighted case as:
+$\operatorname{Weight}\left[X_k \le \hat Q_{X,w,i}(p)\right] \ge p$, because we restricted
+weights to sum to 1.
+
+### P3 and P4: symmetry
+
+Per [Hyndman and Fan](https://doi.org/10.2307/2684934), P3 and P4 are symmetry properties 
+that require the tails of distribution to be treated equally.
+
+P3 from [Hyndman and Fan](https://doi.org/10.2307/2684934): 
+$\operatorname{Freq}\left[X_k \le \hat Q_{X,i}(p)\right] = \operatorname{Freq}\left[X_k \ge \hat Q_{X,i}(1 - p)\right]$.
+
+P4 from [Hyndman and Fan](https://doi.org/10.2307/2684934): Where $Q_{X,i}^{-1}(x)$ is uniquely defined,
+$\hat Q_{X,i}^{-1}\left(X_{(k)}\right) + \hat Q_{X,i}^{-1}\left(X_{(n-k+1)}\right) = 1$ for all $k \in {1, ..., n}$.
+
+Since weights may not be equal for each realization, we can't translate this as directly.
+Thus, instead of requiring that the left and right tails of $X$ are treated equally, we'll
+require that tails be treated equally if the quantile algorithm proceeds from the left
+or from the right; i.e. that the left tail of $X$ and the right tail of $-X$ be treated 
+equally. 
+
+Thus, P3 in the weighted case is: $\operatorname{Weight}\left[X_k \le \hat Q_{X,w,i}(p)\right] = \operatorname{Weight}\left[X_k \ge \hat Q_{-X,w,i}(1 - p)\right]$
+
+And P4 in the weighted case is: $\hat Q_{X,w,i}^{-1}\left(X_{(k)}\right) + \hat Q_{-X,w,i}^{-1}\left((-X)_{(n-k+1)}\right) = 1$ for all $k \in {1, ..., n}$
+
+P4 should be satisfied by all continuous types except Type 4.
+
+### P5: positive probability outside the sample range
+
+P5 from [Hyndman and Fan](https://doi.org/10.2307/2684934): Where $\hat Q_{X,i}^{-1}(x)$ is uniquely defined,
+$\hat Q_{X,i}^{-1}\left(X_{(1)}\right) > 0$ and $\hat Q_{X,i}^{-1}\left(X_{(n)}\right) < 1$.
+
+P5 requires there to be probability > 0 outside of the range of $X$; this generalizes 
+to the weighted case by using $\hat Q_{X,w,i}(p)$ in place of $\hat Q_{X,i}(p)$. P5
+is satisfied by all continuous types except 4 and 7.
+
+### P6: sample median
+
+P6 from [Hyndman and Fan](https://doi.org/10.2307/2684934) requires $\hat Q_{X,i}(0.5)$ to 
+be equal to the sample median. 
+
+The weighted sample median is the order statistic $x_{(k)}$ where $W_{(k-1)} \le 0.5$ and
+$W_{(k)} \ge 0.5$; or if two elements satisfy this criterion, it is their mean:
+
+```{r}
+weighted_median = function(X, w) {
+  W = cumsum(w)
+  candidates = X[which(W - w <= 0.5 & W >= 0.5)]
+  mean(candidates)
+}
+```
+
+Unlike in the unweighted case, where most of the quantile types satisfy this criterion,
+only Type 2 does in the weighted case. This can be seen from the running example above,
+where the weighted median is 3 but most of the quantile types do not report 3 as the
+quantile at $p = 0.5$.
+
+However, the estimates are close, and one way to make it closer may be to take sample 
+size into account. The main byproduct of increased sample size in the unweighted case
+is flat regions in the quantile function, which we can create by replicating points
+in proportion to the number of points they would have if the sample were unweighted.
+
+I do not want an algorithm that requires knowing the sample size, nor do I want
+one that requires the sample size to be a whole number (as weighting is often used
+in cases where one or both of these conditions cannot be met). So what we'll do
+is first estimate the sample size, then replicate each point in the dataset
+in proportion to its share of the sample size, and divide its weight by the 
+number of times replicated it. This will introduce flat regions in areas of
+high weight without affecting the other regions of the function.
+
+First, we estimate the sample size using Kish's effective sample size (though
+if a sample size is known, this could be used instead):
+
+```{r}
+kess = function(w) sum(w) ^ 2 / sum(w ^ 2)
+ess = kess(w)
+ess
+```
+
+Then we construct a modified dataset, $X'$, with replications proportional to
+weights:
+
+```{r}
+n_rep = ceiling(w * ess)
+X_prime = rep.int(X, n_rep)
+w_prime = rep.int(w/n_rep, n_rep)
+W_prime = cumsum(w_prime)
+tibble("X'" = X_prime, "w'" = w_prime, "W'" = W_prime)
+```
+
+
+Notice how this has replaced the single 3 in the dataset with a set of 3s, splitting
+the original's weight between them. Because the sample size is estimated we haven't
+perfectly recovered the original sample, but it is much closer, and will introduce
+flat regions into the quantile function:
+
+```{r}
+continuous_quantile_plot(7, alpha_7, beta_7, m_7, X = X_prime, w = w_prime) 
+```
+
+The weighted quantiles now match the unweighted quantiles much more closely, and
+we recover the weighted sample median in this case (though it is not guaranteed
+in all cases). This seems like a pretty good default compromise to me.
+
+## Other approaches
+
+Other approaches to weighted quantile estimation are included in some R packages.
+
+### cNORM
+
+cNORM provides a few quantile estimators, including the Harrell-Davis quantile estimator:
+
+```{r}
+ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Weighted Harrell-Davis quantile estimator") +
+  geom_function(fun = \(p) cNORM::weighted.quantile.harrell.davis(X, p, w), color = Q_hat_w_color, linewidth = 1, n = 1000)
+```
+
+This estimator strikes me as too smooth in areas that should be flat, lying outside
+the region I would consider reasonable.
+
+The `cNORM::weighted.quantile.inflation` method is similar to the replication step
+I suggested above, but it assumes a whole number sample size and applies an unweighted 
+(instead of weighted) quantile estimator after inflation.
+
+cNORM also provides an implementation of a weighted Type 7 quantile estimator 
+per [Akinshin](https://aakinshin.net/posts/weighted-quantiles):
+
+```{r}
+ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Weighted Type 7 quantile estimator per Akinshin") +
+  geom_function(fun = \(p) cNORM::weighted.quantile.type7(X, p, w), color = Q_hat_w_color, linewidth = 1, n = 1000)
+```
+
+Like the Harrell-Davis estimator, this is outside of the reasonable region.
+
+### Hmisc
+
+Hmisc provides several weighted quantile estimators. The default, like `cNORM::weighted.quantile.inflation`,
+inflates the sample size and passes the result to `quantile()`; this only works well if
+the original sample size is known, and will ignore elements with very low weight. Here is the
+default `Hmisc::wtd.quantile()` using `normwt` to attempt to recover the sample size from 
+its length:
+
+```{r}
+ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Weighted quantile using inflation from Hmisc") +
+  geom_function(fun = \(p) Hmisc::wtd.quantile(X, w, p, normwt = TRUE), color = Q_hat_w_color, linewidth = 1, n = 1000)
+```
+
+Because it does not correctly recover the original sample size, the quantiles are incorrect.
+
+The other three types use interpolations of the weighted empirical cumulative distribution function.
+All but `type = "i/n"` required `normwt = TRUE` as they failed on weights that sum to 1. The first
+two were not contained within the reasonable region:
+
+```{r}
+# quantile','(i-1)/(n-1)','i/(n+1)','i/n
+
+im1nm1_plot = ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Hmisc type (i-1)/(n-1)") +
+  geom_function(fun = \(p) Hmisc::wtd.quantile(X, w, p, normwt = TRUE, type = "(i-1)/(n-1)"), color = Q_hat_w_color, linewidth = 1, n = 1000)
+
+inp1_plot = ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Hmisc type i/(n+1)") +
+  geom_function(fun = \(p) Hmisc::wtd.quantile(X, w, p, normwt = TRUE, type = "i/(n+1)"), color = Q_hat_w_color, linewidth = 1, n = 1000)
+
+im1nm1_plot + inp1_plot
+```
+
+The last type appears to be equivalent to the weighted Type 4 quantile estimator:
+
+```{r}
+ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Hmisc type i/n") +
+  geom_function(fun = \(p) Hmisc::wtd.quantile(X, w, p, type = "i/n"), color = Q_hat_w_color, linewidth = 1, n = 1000)
+```
+
+### collapse
+
+collapse provides an implementation motivated similarly to the weighted quantile estimators
+described in this document, but with a slightly different derivation: it attempts to involve
+the weight of the smallest sample unit in the calculations. I am not sure how this would 
+compare to the approach developed here as the current implementation appears to have some
+bugs; the resulting estimate on the running example is not monotonic:
+
+```{r}
+ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "collapse::fquantile") +
+  geom_function(fun = \(p) collapse::fquantile(X, p, w), color = Q_hat_w_color, linewidth = 1, n = 1000)
+```
+
+
+### ggdist
+
+ggdist's current implementation uses the interpolation method described in this document
+for $p_k$ but omits the $v_k$ points from the interpolation. This will be corrected
+soon to use the method described in this document, likely with replication via Kish's
+effective sample size as the default (it provides this an an option currently but it is
+not the default).
