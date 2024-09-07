@@ -335,7 +335,7 @@ weighted_quantile = function(X, w = NULL, p, m = \(p) 0.5) {
   }
   
   X = c(X[[1]], X)
-  w = c(0, w)
+  w = c(0, w/sum(w))
   W = cumsum(w)
   n = length(X)
 
@@ -792,3 +792,204 @@ for $p_k$ but omits the $v_k$ points from the interpolation. This will be correc
 soon to use the method described in this document, likely with replication via Kish's
 effective sample size as the default (it provides this an an option currently but it is
 not the default).
+
+
+## Estimation error
+
+Let's generate some observations from a weighted distribution:
+
+```{r}
+set.seed(7345)
+
+n_dist = 10
+mu = rnorm(n_dist)
+sigma = rgamma(n_dist,2,2)
+dist_weight = rexp(n_dist,1)
+dist_weight = dist_weight/sum(dist_weight)
+dist = dist_mixture(!!!as.list(dist_normal(mu, sigma)), weights = dist_weight)
+
+n_per_dist = 15
+n_obs = n_per_dist * n_dist
+x_obs = rnorm(n_obs, rep(mu, n_per_dist), rep(sigma, n_per_dist))
+w_obs = rep(dist_weight, n_per_dist)
+w_obs = w_obs / sum(w_obs)
+
+i_obs = order(x_obs)
+X_obs = x_obs[i_obs]
+w_obs = w_obs[i_obs]
+W_obs = cumsum(w_obs)
+```
+
+Verify the data generation looks right:
+
+```{r}
+ggplot() + 
+  stat_density(aes(x = X_obs, weight = w_obs), bw = 0.2, fill = "gray75") +
+  ggdist::stat_slab(aes(xdist = dist), fill = NA, color = "red", normalize = "none", scale = 1)
+```
+
+What is the estimation error of quantiles?
+
+
+```{r}
+types = tibble(
+  type = c(c(4:9, 4:9), "H-D", 7),
+  subtype = c(rep(c("p,v", "p"), each = 6), "H-D", "H-D"),
+  Q_hat_f = list(
+    \(x, w, p) weighted_quantile(x, w, p, m_4),
+    \(x, w, p) weighted_quantile(x, w, p, m_5),
+    \(x, w, p) weighted_quantile(x, w, p, m_6),
+    \(x, w, p) weighted_quantile(x, w, p, m_7),
+    \(x, w, p) weighted_quantile(x, w, p, m_8),
+    \(x, w, p) weighted_quantile(x, w, p, m_9),
+    \(x, w, p) ggdist::weighted_quantile(x, p, w, type = 4),
+    \(x, w, p) ggdist::weighted_quantile(x, p, w, type = 5),
+    \(x, w, p) ggdist::weighted_quantile(x, p, w, type = 6),
+    \(x, w, p) ggdist::weighted_quantile(x, p, w, type = 7),
+    \(x, w, p) ggdist::weighted_quantile(x, p, w, type = 8),
+    \(x, w, p) ggdist::weighted_quantile(x, p, w, type = 9),
+    \(x, w, p) cNORM::weighted.quantile.harrell.davis(x, p, w),
+    \(x, w, p) cNORM::weighted.quantile.type7(x, p, w)
+  )
+)
+
+q_df = tibble(
+  p = ppoints(10), 
+  q = quantile(dist, p)[[1]]
+  # q = KScorrect::qmixnorm(p, mu, sigma, dist_weight)
+)
+
+Q_hat_df = bind_rows(.mapply(types, MoreArgs = NULL, FUN = \(type, subtype, Q_hat_f) {
+  q_df |> mutate(
+    type = type,
+    subtype = subtype,
+    Q_hat = Q_hat_f(X_obs, w_obs, p)
+  )
+}))
+```
+
+```{r}
+Q_hat_df |>
+  group_by(type, subtype) |>
+  summarise(rmse = sqrt(mean(Q_hat - q)^2)) |>
+  arrange(rmse)
+```
+
+
+```{r}
+set.seed(1234)
+
+n_sim = 500
+
+Q_hat_df = bind_rows(lapply(1:n_sim, \(sim) {
+  n_dist = 10
+  mu = rnorm(n_dist)
+  sigma = rgamma(n_dist,2,2)
+  dist_weight = rexp(n_dist,1)
+  dist_weight = dist_weight/sum(dist_weight)
+  # dist = dist_mixture(!!!as.list(dist_normal(mu, sigma)), weights = dist_weight)
+  
+  n_per_dist = 5
+  n_obs = n_per_dist * n_dist
+  x_obs = rnorm(n_obs, rep(mu, n_per_dist), rep(sigma, n_per_dist))
+  w_obs = rep(dist_weight, n_per_dist)
+  w_obs = w_obs / sum(w_obs)
+  
+  i_obs = order(x_obs)
+  X_obs = x_obs[i_obs]
+  w_obs = w_obs[i_obs]
+  W_obs = cumsum(w_obs)
+ 
+   q_df = tibble(
+    p = ppoints(20), 
+    # q = quantile(dist, p)[[1]]
+    q = suppressWarnings(KScorrect::qmixnorm(p, mu, sigma, dist_weight))
+  )
+
+  bind_rows(.mapply(types, MoreArgs = NULL, FUN = \(type, subtype, Q_hat_f) {
+    q_df |> mutate(
+      sim = sim,
+      type = type,
+      subtype = subtype,
+      Q_hat = Q_hat_f(X_obs, w_obs, p)
+    )
+  }))
+}))
+
+```
+
+```{r}
+Q_hat_df |>
+  group_by(type, subtype) |>
+  summarise(
+    err = sqrt(mean((Q_hat - q)^2)), 
+    bias = mean(Q_hat - q),
+    .groups = "drop"
+  ) |>
+  arrange(err)
+```
+
+```{r}
+Q_hat_summary = Q_hat_df |>
+  group_by(type, subtype, sim) |>
+  summarise(
+    bias = mean(Q_hat - q),
+    rmse = mean((Q_hat - q)^2),
+    .groups = "drop"
+  ) 
+
+Q_hat_summary |>
+  ggplot(aes(y = factor(type), x = bias, color = subtype)) +
+  ggdist::stat_histinterval(position = "dodge", point_interval = "mean_qi", breaks = 30, align = "boundary", height = 0.7) +
+  geom_vline(xintercept = 0, alpha = 0.25)
+```
+
+```{r}
+Q_hat_summary |>
+  ggplot(aes(y = factor(type), x = rmse, color = subtype)) +
+  ggdist::stat_histinterval(position = "dodge", point_interval = "mean_qi", breaks = 30, align = "boundary", height = 0.7) +
+  geom_vline(xintercept = 0, alpha = 0.25)
+```
+
+## Zeros
+
+```{r}
+X2 = c(X[1:3],4,X[4:6])
+w2 = c(w[1:3],0,w[4:6])
+W2 = cumsum(w2)
+
+tibble(X2, w2, W2)
+```
+
+
+```{r}
+X2 = c(X[1:3],4,X[4:6])
+w2 = c(w[1:3],0.0001,w[4:6])
+w2 = w2/sum(w2)
+W2 = cumsum(w2)
+```
+
+```{r}
+continuous_quantile_plot(7, 1, 1, m_7, X= X2, w =w2)
+```
+
+```{r}
+n2_rep = ceiling(w2 * ess)
+X2_prime = rep.int(X2, n2_rep)
+w2_prime = rep.int(w2/n_rep, n2_rep)
+W2_prime = cumsum(w2_prime)
+tibble("X2'" = X2_prime, "w2'" = w2_prime, "W2'" = W2_prime)
+```
+
+```{r}
+continuous_quantile_plot(7, 1, 1, m_7, X= X2_prime, w =w2_prime)
+```
+
+```{r}
+ggplot() +
+  continuous_quantile_bounds(X, w) +
+  inverse_cdf_plot(X, w, type = 7) + 
+  labs(subtitle = "Weighted Harrell-Davis quantile estimator") +
+  geom_function(fun = \(p) ggdist::weighted_quantile(X, p, w, n = kess), color = Q_hat_w_color, linewidth = 1, n = 1000)
+```
+
