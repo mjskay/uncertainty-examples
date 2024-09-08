@@ -78,3 +78,78 @@ df |>
 ```
 
 <img src="cumulative-proportion_files/figure-gfm/fuzzy_bars-1.png" width="288" />
+
+## Gradient fuzzy bars
+
+To recreate the above charts using a gradient instead of many
+smooshed-together bars, we need to do some color mixing: we want to
+calculate how much of each color should be at each cumulative proportion
+$p$ (each point along the y axis). For a given value (x, y, or z), this
+will be the probability that the cumulative proportion for that value is
+greater than `p` times the probability that the cumulative proportion
+for the preceding value is less than `p`:
+
+``` r
+p = seq(0, 1 - .Machine$double.eps, length.out = 200)
+
+df_curves = df |>
+  mutate(cumulative_proportion = cumsum(proportion), .by = c(.draw, group)) |>
+  reframe(
+    `P(value)` = (1 - ecdf(cumulative_proportion)(p)) * ecdf(cumulative_proportion - proportion)(p),
+    proportion = p,
+    .by = c(group, value)
+  )
+```
+
+We can check what these curves look like to make sure they’re doing what
+we want:
+
+``` r
+df_curves |>
+  ggplot(aes(x = proportion, y = `P(value)`, color = value)) +
+  geom_line(linewidth = 1) +
+  facet_grid(group ~ .) +
+  scale_color_brewer()
+```
+
+<img src="cumulative-proportion_files/figure-gfm/color_curves-1.png" width="672" />
+
+Now we just have to mix the colors manually:
+
+``` r
+library(farver)
+
+# create and train the scale manually so we can use it to get the colors to mix
+fill_scale = scale_fill_brewer(direction = -1)
+fill_scale$train(c("x", "y", "z"))
+
+df_curves |>
+  # mix the colors manually in the OKLab color space (which is roughly perceptually 
+  # uniform and which has better color mixing than Lab, especially for blues)
+  summarise(
+    color = encode_colour(`P(value)` %*% decode_colour(fill_scale$map(value), to = "oklab"), from = "oklab"),
+    .by = c(group, proportion)
+  ) |>
+  ggplot() +
+  # need this blank geom to create a fill legend, since we aren't actually using the fill
+  # scale in the slab geometry (we already pre-computed the colors above)
+  geom_blank(aes(fill = value), data = data.frame(value = c("x", "y", "z"))) +
+  geom_slab(
+    aes(y = proportion, x = group, fill = I(color), group = NA), 
+    thickness = 1, fill_type = "auto", side = "both"
+  ) +
+  stat_pointinterval(
+    aes(x = group, y = proportion, group = value), 
+    data = df |> 
+      # need 1 - p because position_stack goes top to bottom
+      # (or use position_stack(reverse = TRUE) above)
+      mutate(proportion = cumsum(proportion), .by = c(.draw, group)) |> 
+      # last proportion is pointless to plot because it is 0 with no uncertainty
+      filter(value != "z")
+  ) +
+  fill_scale +
+  scale_y_continuous(limits = c(0, 1)) +
+  coord_cartesian(expand = FALSE)
+```
+
+<img src="cumulative-proportion_files/figure-gfm/gradient_bars-1.png" width="288" />
